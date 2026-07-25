@@ -42,7 +42,7 @@ class FocusSoundEngine {
     }
   }
 
-  public startFocusSound(mode: 'rain' | 'binaural' | 'hum', volume = 0.5) {
+  public startFocusSound(mode: 'rain' | 'binaural' | 'hum' | 'deep', volume = 0.5) {
     this.stopFocusSound();
     this.initCtx();
     if (!this.ctx) return;
@@ -71,7 +71,7 @@ class FocusSoundEngine {
         oscL.start();
         oscR.start();
         this.activeOscillators.push(oscL, oscR);
-      } else if (mode === 'hum') {
+      } else if (mode === 'hum' || mode === 'deep') {
         // Deep warm library hum
         const osc = this.ctx.createOscillator();
         osc.type = 'triangle';
@@ -150,3 +150,11 @@ class FocusSoundEngine {
 }
 
 export const focusAudio = new FocusSoundEngine();
+
+export const playFocusTone = (mode: 'binaural' | 'rain' | 'hum' | 'deep') => {
+  focusAudio.startFocusSound(mode);
+};
+
+export const stopFocusTone = () => {
+  focusAudio.stopFocusSound();
+};

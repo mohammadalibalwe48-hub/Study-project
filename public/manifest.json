@@ -1,16 +1,65 @@
 {
-  "name": "المنصة التعليمية للبكالوريا السورية",
+  "name": "منصة البكالوريا السورية الذكية",
   "short_name": "بكالوريا سوريا",
-  "description": "منصة تعليمية متكاملة لطلاب البكالوريا السورية (علمي وأدبي)",
+  "description": "المنصة التعليمية الأولى لطلاب البكالوريا السورية - دروس، اختبارات تفاعلية، نمط PWA وأدوات دراسية بدون إنترنت.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#fffaf0",
-  "theme_color": "#ffd500",
+  "orientation": "portrait-primary",
+  "background_color": "#090d16",
+  "theme_color": "#06b6d4",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": [
+    "education",
+    "productivity",
+    "lifestyle"
+  ],
   "icons": [
     {
-      "src": "/favicon.ico",
+      "src": "/favicon.png",
       "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "بنك الاختبارات والامتحانات",
+      "short_name": "الاختبارات",
+      "description": "انتقل مباشرة لحل النماذج الوزارية والاختبارات التفاعلية",
+      "url": "/dashboard/exams",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "مؤقت التركيز والبومودورو",
+      "short_name": "المؤقت",
+      "description": "افتح مؤقت الدراسة ومولد الصوت الذهني لزيادة التركيز",
+      "url": "/dashboard/planner",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "المكتبة الرقمية للدروس",
+      "short_name": "المكتبة",
+      "description": "تصفح ملخصات المواد والكتب الدراسية",
+      "url": "/library",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
