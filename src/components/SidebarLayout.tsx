@@ -146,43 +146,37 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
     return pathname === item.path || pathname.startsWith(`${item.path}/`);
   };
 
-  const handleAskAI = (text: string) => {
+  const handleAskAI = async (text: string) => {
     if (!text.trim()) return;
 
-    setMessages((prev) => [...prev, { sender: 'user', text }]);
+    const newMessages = [...messages, { sender: 'user' as const, text }];
+    setMessages(newMessages);
     setInputValue('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      let reply =
-        'عذراً، لم أفهم سؤالك تماماً. يمكنك سؤالي عن "قوانين الفيزياء"، "تكامل الرياضيات"، "معادلات الكيمياء"، أو "نصائح المذاكرة"!';
-      const cleanText = text.toLowerCase();
-
-      if (cleanText.includes('فيزياء') || cleanText.includes('نواسات') || cleanText.includes('حركة')) {
-        reply = `قوانين الفيزياء الهامة للبكالوريا:
-- النواس المرن: T0 = 2π √(m/K)
-- النواس البسيط: T0 = 2π √(l/g)
-- الحقل المغناطيسي لملف دائري: B = 2π * 10^-7 * (N.I / R)`;
-      } else if (cleanText.includes('رياضيات') || cleanText.includes('تكامل') || cleanText.includes('لوغاريتم')) {
-        reply = `صيغ وقوانين الرياضيات:
-- مشتق اللوغاريتم: (ln x)' = 1/x
-- مشتق التابع الأسي: (e^x)' = e^x
-- قانون التكامل بالتجزئة: ∫ u dv = u.v - ∫ v du`;
-      } else if (cleanText.includes('كيمياء') || cleanText.includes('توازن')) {
-        reply = `قوانين الكيمياء:
-- ثابت التوازن Kc = [النواتج] / [المتفاعلات]
-- الجداء الشاردي للماء: Kw = [H3O+] * [OH-] = 10^-14
-- حساب الرقم الهيدروجيني: pH = -log[H3O+]`;
-      } else if (cleanText.includes('وقت') || cleanText.includes('دراسة') || cleanText.includes('نصائح')) {
-        reply = `نصائح تنظيم الوقت للبكالوريا:
-1. اتبع تقنية 25 دقيقة تركيز + 5 دقائق استراحة.
-2. حل النماذج الوزارية المؤتمتة بشكل دوري.
-3. نم لمدة 7-8 ساعات يومياً لترسيخ المعلومات.`;
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+      const data = await res.json();
+      if (data.reply) {
+        setMessages((prev) => [...prev, { sender: 'ai', text: data.reply }]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { sender: 'ai', text: 'أهلاً بك! يسعدني إجابتك على أي سؤال في المنهاج السوري ورغبتك بالتميز.' },
+        ]);
       }
-
-      setMessages((prev) => [...prev, { sender: 'ai', text: reply }]);
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        { sender: 'ai', text: 'حدث خطأ مؤقت في الاتصال، يرجى المحاولة مجدداً وسأكون معك فوراً!' },
+      ]);
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   const renderNavigationLinks = (onNavigate?: () => void) => (
