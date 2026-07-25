@@ -10,6 +10,7 @@ import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { MathText } from '@/components/FormulaRenderer';
 import { awardXP, updateStreak, checkAndUnlockBadges, Badge } from '@/utils/xpHelper';
 import { AlertTriangle, FileText, Sparkles, Lightbulb, RotateCcw, Bookmark, Check, X, Clock } from 'lucide-react';
+import { CURRICULUM_QUIZZES } from '@/utils/curriculumData';
 
 interface Quiz {
   id: number;
@@ -200,35 +201,90 @@ export default function QuizPlayPage({ params }: PageProps) {
     async function fetchQuizData() {
       try {
         setDbLoading(true);
+        const numQuizId = Number(quizId);
         const { data: qData, error: qErr } = await supabase
           .from('quizzes')
           .select('*')
-          .eq('id', quizId)
+          .eq('id', numQuizId)
           .single();
-        if (qErr) throw qErr;
-        setQuiz(qData);
 
-        const { data: qList, error: listErr } = await supabase
-          .from('questions')
-          .select('*')
-          .eq('quiz_id', quizId)
-          .order('id', { ascending: true });
-        if (listErr) throw listErr;
-        setQuestions(qList || []);
+        if (!qErr && qData) {
+          setQuiz(qData);
+          const { data: qList } = await supabase
+            .from('questions')
+            .select('*')
+            .eq('quiz_id', numQuizId)
+            .order('id', { ascending: true });
+
+          const staticMatch = CURRICULUM_QUIZZES.find((cq) => cq.id === numQuizId);
+          setQuestions(
+            qList && qList.length > 0
+              ? qList
+              : staticMatch?.questions.map((q) => ({
+                  id: q.id,
+                  quiz_id: q.quiz_id,
+                  question_text: q.question_text,
+                  options: q.options,
+                  correct_option_index: q.correct_option_index,
+                  explanation: q.explanation,
+                })) || []
+          );
+        } else {
+          // Static fallback dataset
+          const staticQuiz = CURRICULUM_QUIZZES.find((cq) => cq.id === numQuizId) || CURRICULUM_QUIZZES[0];
+          setQuiz({
+            id: staticQuiz.id,
+            title: staticQuiz.title,
+            description: staticQuiz.description,
+            subject_id: staticQuiz.subject_id,
+            time_limit: staticQuiz.time_limit,
+            is_official: staticQuiz.is_official,
+            exam_year: staticQuiz.exam_year,
+          });
+          setQuestions(
+            staticQuiz.questions.map((q) => ({
+              id: q.id,
+              quiz_id: q.quiz_id,
+              question_text: q.question_text,
+              options: q.options,
+              correct_option_index: q.correct_option_index,
+              explanation: q.explanation,
+            }))
+          );
+        }
 
         if (user) {
-          const { data: attData, error: attErr } = await supabase
+          const { data: attData } = await supabase
             .from('quiz_results')
             .select('id, score, total_questions, completed_at')
             .eq('user_id', user.id)
-            .eq('quiz_id', quizId)
+            .eq('quiz_id', numQuizId)
             .order('completed_at', { ascending: false });
-          if (!attErr) {
-            setPreviousAttempts(attData || []);
-          }
+          setPreviousAttempts(attData || []);
         }
       } catch (err) {
         console.error('Error fetching quiz details:', err);
+        const numQuizId = Number(quizId);
+        const staticQuiz = CURRICULUM_QUIZZES.find((cq) => cq.id === numQuizId) || CURRICULUM_QUIZZES[0];
+        setQuiz({
+          id: staticQuiz.id,
+          title: staticQuiz.title,
+          description: staticQuiz.description,
+          subject_id: staticQuiz.subject_id,
+          time_limit: staticQuiz.time_limit,
+          is_official: staticQuiz.is_official,
+          exam_year: staticQuiz.exam_year,
+        });
+        setQuestions(
+          staticQuiz.questions.map((q) => ({
+            id: q.id,
+            quiz_id: q.quiz_id,
+            question_text: q.question_text,
+            options: q.options,
+            correct_option_index: q.correct_option_index,
+            explanation: q.explanation,
+          }))
+        );
       } finally {
         setDbLoading(false);
       }

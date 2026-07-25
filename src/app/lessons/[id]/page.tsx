@@ -7,16 +7,8 @@ import { supabase } from '@/utils/supabase/client';
 import Link from 'next/link';
 import SidebarLayout from '@/components/SidebarLayout';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
-import { Check, Star, Video } from 'lucide-react';
-
-interface Lesson {
-  id: number;
-  subject_id: number;
-  name: string;
-  content: string | null;
-  video_url: string | null;
-  order_index: number;
-}
+import { Check, Star, Video, FileText } from 'lucide-react';
+import { CURRICULUM_LESSONS, CURRICULUM_SUBJECTS, CurriculumLesson } from '@/utils/curriculumData';
 
 interface FileItem {
   id: number;
@@ -34,7 +26,7 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-function getYoutubeEmbedUrl(url: string | null) {
+function getYoutubeEmbedUrl(url: string | null | undefined) {
   if (!url) return null;
   let videoId = '';
   try {
@@ -52,9 +44,10 @@ function getYoutubeEmbedUrl(url: string | null) {
 }
 
 export default function LessonDetailPage({ params }: PageProps) {
-  const { id: lessonId } = use(params);
+  const { id: lessonIdStr } = use(params);
+  const lessonId = Number(lessonIdStr);
   const { user, profile, loading, signOut } = useAuth();
-  const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [lesson, setLesson] = useState<CurriculumLesson | null>(null);
   const [subjectName, setSubjectName] = useState('');
   const [files, setFiles] = useState<FileItem[]>([]);
   const [siblingLessons, setSiblingLessons] = useState<SiblingLesson[]>([]);
@@ -67,15 +60,26 @@ export default function LessonDetailPage({ params }: PageProps) {
     async function fetchLessonData() {
       try {
         setDbLoading(true);
+        // Try fetching from Supabase
         const { data: lesData, error: lesErr } = await supabase
           .from('lessons')
           .select('*')
           .eq('id', lessonId)
           .single();
-        if (lesErr) throw lesErr;
-        setLesson(lesData);
 
-        if (lesData) {
+        if (!lesErr && lesData) {
+          // If video_url in DB is missing or invalid, check if we have a verified static match
+          const staticMatch = CURRICULUM_LESSONS.find((l) => l.id === lessonId);
+          setLesson({
+            id: lesData.id,
+            subject_id: lesData.subject_id,
+            name: lesData.name,
+            content: lesData.content || staticMatch?.content || '',
+            video_url: lesData.video_url || staticMatch?.video_url || '',
+            order_index: lesData.order_index || 1,
+            durationMinutes: staticMatch?.durationMinutes || 45,
+          });
+
           const { data: subData } = await supabase
             .from('subjects')
             .select('name')
@@ -83,39 +87,63 @@ export default function LessonDetailPage({ params }: PageProps) {
             .single();
           if (subData) setSubjectName(subData.name);
 
-          const { data: fileData, error: fileErr } = await supabase
+          const { data: fileData } = await supabase
             .from('files')
             .select('*')
             .eq('lesson_id', lessonId);
-          if (!fileErr) setFiles(fileData || []);
+          setFiles(fileData && fileData.length > 0 ? fileData : staticMatch?.pdf_files || []);
 
-          const { data: sibData, error: sibErr } = await supabase
+          const { data: sibData } = await supabase
             .from('lessons')
             .select('id, name, order_index')
             .eq('subject_id', lesData.subject_id)
             .order('order_index', { ascending: true });
-          if (!sibErr) setSiblingLessons(sibData || []);
+          setSiblingLessons(sibData && sibData.length > 0 ? sibData : CURRICULUM_LESSONS.filter(l => l.subject_id === lesData.subject_id));
+        } else {
+          // Fallback to static verified curriculum dataset
+          const staticLesson = CURRICULUM_LESSONS.find((l) => l.id === lessonId) || CURRICULUM_LESSONS[0];
+          setLesson(staticLesson);
+          const staticSubject = CURRICULUM_SUBJECTS.find((s) => s.id === staticLesson.subject_id);
+          setSubjectName(staticSubject?.name || 'المادة المقررة');
+          setFiles(staticLesson.pdf_files || []);
+          setSiblingLessons(
+            CURRICULUM_LESSONS.filter((l) => l.subject_id === staticLesson.subject_id).map((l) => ({
+              id: l.id,
+              name: l.name,
+              order_index: l.order_index,
+            }))
+          );
+        }
 
-          if (user) {
-            const { data: bData } = await supabase
-              .from('bookmarks')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('item_type', 'lesson')
-              .eq('item_id', Number(lessonId))
-              .maybeSingle();
+        if (user) {
+          const { data: bData } = await supabase
+            .from('bookmarks')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('target_type', 'lesson')
+            .eq('target_id', Number(lessonId))
+            .maybeSingle();
 
-            if (bData) {
-              setIsBookmarked(true);
-              setBookmarkId(bData.id);
-            } else {
-              setIsBookmarked(false);
-              setBookmarkId(null);
-            }
+          if (bData) {
+            setIsBookmarked(true);
+            setBookmarkId(bData.id);
           }
         }
       } catch (err) {
         console.error('Error fetching lesson data:', err);
+        // Fallback
+        const staticLesson = CURRICULUM_LESSONS.find((l) => l.id === lessonId) || CURRICULUM_LESSONS[0];
+        setLesson(staticLesson);
+        const staticSubject = CURRICULUM_SUBJECTS.find((s) => s.id === staticLesson.subject_id);
+        setSubjectName(staticSubject?.name || 'المادة');
+        setFiles(staticLesson.pdf_files || []);
+        setSiblingLessons(
+          CURRICULUM_LESSONS.filter((l) => l.subject_id === staticLesson.subject_id).map((l) => ({
+            id: l.id,
+            name: l.name,
+            order_index: l.order_index,
+          }))
+        );
       } finally {
         setDbLoading(false);
       }
@@ -128,11 +156,7 @@ export default function LessonDetailPage({ params }: PageProps) {
     if (!user) return;
     try {
       if (isBookmarked && bookmarkId) {
-        const { error } = await supabase
-          .from('bookmarks')
-          .delete()
-          .eq('id', bookmarkId);
-        if (error) throw error;
+        await supabase.from('bookmarks').delete().eq('id', bookmarkId);
         setIsBookmarked(false);
         setBookmarkId(null);
       } else {
@@ -140,14 +164,15 @@ export default function LessonDetailPage({ params }: PageProps) {
           .from('bookmarks')
           .insert({
             user_id: user.id,
-            item_type: 'lesson',
-            item_id: Number(lessonId),
+            target_type: 'lesson',
+            target_id: Number(lessonId),
           })
           .select('id')
           .single();
-        if (error) throw error;
-        setIsBookmarked(true);
-        setBookmarkId(data.id);
+        if (!error && data) {
+          setIsBookmarked(true);
+          setBookmarkId(data.id);
+        }
       }
     } catch (err) {
       console.error('Error toggling bookmark:', err);
@@ -168,12 +193,12 @@ export default function LessonDetailPage({ params }: PageProps) {
     return (
       <div className="flex-1 flex flex-col justify-center items-center py-20 px-6 bg-[#001420] text-center text-foreground">
         <h2 className="text-4xl font-display font-normal">الدرس غير موجود</h2>
-        <p className="text-xs text-muted-foreground mt-2">الرجاء العودة إلى لوحة التحكم.</p>
+        <p className="text-xs text-muted-foreground mt-2">الرجاء العودة إلى المواد المقررة.</p>
         <Link
-          href="/dashboard"
+          href="/subjects"
           className="mt-6 liquid-glass-glow rounded-full px-8 py-3 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40"
         >
-          العودة للرئيسية
+          العودة للمواد
         </Link>
       </div>
     );
@@ -184,9 +209,8 @@ export default function LessonDetailPage({ params }: PageProps) {
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
       <div className="flex-1 flex flex-col lg:flex-row gap-6 h-full w-full">
-        
         {/* Central Content Area */}
-        <section className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-8 overflow-y-auto text-right border border-white/15">
+        <section className="flex-1 liquid-glass-glow rounded-3xl p-6 sm:p-8 flex flex-col gap-8 overflow-y-auto text-right border border-white/15">
           {/* Breadcrumbs */}
           <div className="flex items-center justify-between w-full border-b border-white/10 pb-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
@@ -213,11 +237,11 @@ export default function LessonDetailPage({ params }: PageProps) {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-6 gap-4">
             <div>
               <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3.5 py-1 rounded-full inline-block font-medium">
-                الشرح المرئي والملاحظات
+                الشرح المرئي والملاحظات الوزارية
               </span>
-              <h1 className="text-4xl sm:text-5xl font-display font-normal text-foreground mt-3">{lesson.name}</h1>
+              <h1 className="text-3xl sm:text-4xl font-display font-normal text-foreground mt-3 leading-snug">{lesson.name}</h1>
             </div>
-            
+
             <button
               onClick={handleToggleBookmark}
               className={`liquid-glass-glow rounded-full px-6 py-3 text-xs font-medium transition-all shrink-0 border border-cyan-400/40 cursor-pointer flex items-center gap-1.5 ${
@@ -225,16 +249,20 @@ export default function LessonDetailPage({ params }: PageProps) {
               }`}
             >
               {isBookmarked ? (
-                <><Check className="w-3.5 h-3.5 text-emerald-400" /> محفوظ في مفضلتك</>
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" /> محفوظ في مفضلتك
+                </>
               ) : (
-                <><Star className="w-3.5 h-3.5 text-amber-400" /> حفظ في المفضلة</>
+                <>
+                  <Star className="w-3.5 h-3.5 text-amber-400" /> حفظ في المفضلة
+                </>
               )}
             </button>
           </div>
 
-          {/* Embedded Video */}
+          {/* Embedded Real YouTube Video Player */}
           {embedUrl ? (
-            <div className="overflow-hidden rounded-3xl border border-white/15 bg-black aspect-video shadow-2xl">
+            <div className="overflow-hidden rounded-3xl border border-cyan-500/30 bg-black aspect-video shadow-2xl relative group">
               <iframe
                 src={embedUrl}
                 title={lesson.name}
@@ -257,21 +285,25 @@ export default function LessonDetailPage({ params }: PageProps) {
             </div>
           ) : null}
 
-          {/* Notes */}
+          {/* Detailed Verified Lesson Notes */}
           {lesson.content && (
-            <div className="liquid-glass rounded-3xl p-8 space-y-4 border border-white/10 text-right">
-              <h3 className="text-2xl font-display font-normal text-foreground border-b border-white/10 pb-3">ملاحظات وشروحات الدرس</h3>
-              <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+            <div className="liquid-glass rounded-3xl p-6 sm:p-8 space-y-4 border border-white/10 text-right">
+              <h3 className="text-2xl font-display font-normal text-foreground border-b border-white/10 pb-3">
+                شرح الملاحظات والاستنتاجات الهامة
+              </h3>
+              <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">
                 {lesson.content}
               </div>
             </div>
           )}
 
-          {/* PDF Files */}
+          {/* PDF Files & Summaries */}
           <div className="space-y-6 pt-4 border-t border-white/10">
-            <h3 className="text-3xl font-display font-normal text-foreground">الملخصات وأوراق العمل</h3>
+            <h3 className="text-2xl sm:text-3xl font-display font-normal text-foreground">الملخصات وأوراق العمل</h3>
             {files.length === 0 ? (
-              <p className="text-xs text-muted-foreground liquid-glass p-6 rounded-2xl border border-white/10">لا توجد ملفات مرفقة بهذا الدرس حالياً.</p>
+              <p className="text-xs text-muted-foreground liquid-glass p-6 rounded-2xl border border-white/10">
+                لا توجد ملفات مرفقة بهذا الدرس حالياً.
+              </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {files.map((file) => (
@@ -279,18 +311,20 @@ export default function LessonDetailPage({ params }: PageProps) {
                     key={file.id}
                     className="flex items-center justify-between liquid-glass-glow rounded-2xl p-5 border border-white/15 hover:scale-[1.02] transition-transform group"
                   >
-                    <div className="space-y-1 text-right">
-                      <h4 className="font-display font-normal text-foreground text-lg truncate">{file.name}</h4>
-                      <span className="text-[10px] text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-0.5 rounded-full inline-block">PDF</span>
+                    <div className="space-y-1 text-right min-w-0 pr-2">
+                      <h4 className="font-display font-normal text-foreground text-base truncate">{file.name}</h4>
+                      <span className="text-[10px] text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-0.5 rounded-full inline-block">
+                        PDF
+                      </span>
                     </div>
-                    
+
                     <a
                       href={file.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="liquid-glass-glow rounded-full px-5 py-2 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 shrink-0"
+                      className="liquid-glass-glow rounded-full px-5 py-2 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 shrink-0 flex items-center gap-1.5"
                     >
-                      تحميل ↓
+                      <FileText className="w-3.5 h-3.5 text-cyan-400" /> تحميل
                     </a>
                   </div>
                 ))}
@@ -304,7 +338,7 @@ export default function LessonDetailPage({ params }: PageProps) {
           <div className="border-b border-white/10 pb-4">
             <h4 className="font-display text-2xl text-foreground">دروس الوحدة الحالية</h4>
           </div>
-          
+
           <div className="space-y-3">
             {siblingLessons.map((sib, index) => {
               const isCurrent = sib.id === lesson.id;
@@ -318,18 +352,21 @@ export default function LessonDetailPage({ params }: PageProps) {
                       : 'liquid-glass text-muted-foreground hover:text-foreground border-white/5'
                   }`}
                 >
-                  <span className={`h-8 w-8 rounded-full flex items-center justify-center font-display font-bold text-xs ${
-                    isCurrent ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' : 'bg-white/5 text-muted-foreground'
-                  }`}>
+                  <span
+                    className={`h-8 w-8 rounded-full flex items-center justify-center font-display font-bold text-xs shrink-0 ${
+                      isCurrent
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
+                        : 'bg-white/5 text-muted-foreground'
+                    }`}
+                  >
                     {index + 1}
                   </span>
-                  <span className="font-display text-lg truncate">{sib.name}</span>
+                  <span className="font-display text-base truncate">{sib.name}</span>
                 </Link>
               );
             })}
           </div>
         </section>
-
       </div>
     </SidebarLayout>
   );
