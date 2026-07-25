@@ -45,11 +45,13 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   const [messages, setMessages] = useState<{ sender: 'ai' | 'user'; text: string }[]>([
     {
       sender: 'ai',
-      text: 'مرحباً بك! أنا الرفيق البطل، مساعدك الذكي لمنهاج البكالوريا السورية. يمكنك كتابة أي استفسار في أي وقت!',
+      text: 'مرحباً بك يا بطل! أنا (الرفيق البطل)، مساعدك الذكي المخصص حصرياً لمنهاج البكالوريا السورية والمنصة التعليمية. اسألني عن أي قانون، مسألة، أو إعراب وسأساعدك فوراً! 🎓',
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -58,7 +60,15 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
     }
   }, [messages, isTyping]);
 
-  // Lock body scroll when mobile drawer is open
+  // Anti-Spam Cooldown CountDown Timer
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown((prev) => prev - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
+
+  // Lock body scroll when mobile drawer or AI drawer is open
   useEffect(() => {
     if (mobileMenuOpen || aiOpen) {
       document.body.style.overflow = 'hidden';
@@ -147,12 +157,17 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   };
 
   const handleAskAI = async (text: string) => {
-    if (!text.trim()) return;
+    const trimmed = text.trim();
+    if (!trimmed || isTyping || cooldown > 0) return;
 
-    const newMessages = [...messages, { sender: 'user' as const, text }];
+    // Enforce 500 characters limit
+    const cleanPrompt = trimmed.slice(0, 500);
+
+    const newMessages = [...messages, { sender: 'user' as const, text: cleanPrompt }];
     setMessages(newMessages);
     setInputValue('');
     setIsTyping(true);
+    setCooldown(3); // 3-second anti-spam cooldown after sending
 
     try {
       const res = await fetch('/api/chat', {
@@ -166,17 +181,38 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
       } else {
         setMessages((prev) => [
           ...prev,
-          { sender: 'ai', text: 'أهلاً بك! يسعدني إجابتك على أي سؤال في المنهاج السوري ورغبتك بالتميز.' },
+          {
+            sender: 'ai',
+            text: 'أهلاً بك! يسعدني إجابتك على أي سؤال في منهاج البكالوريا السورية ورغبتك بالتميز والنجاح.',
+          },
         ]);
       }
     } catch (e) {
       setMessages((prev) => [
         ...prev,
-        { sender: 'ai', text: 'حدث خطأ مؤقت في الاتصال، يرجى المحاولة مجدداً وسأكون معك فوراً!' },
+        {
+          sender: 'ai',
+          text: 'حدث خطأ مؤقت في الاتصال بالسيرفر، أعد المحاولة مجدداً وسأكون معك فوراً!',
+        },
       ]);
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleCopyText = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(idx);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const handleClearChat = () => {
+    setMessages([
+      {
+        sender: 'ai',
+        text: 'تم بدء محادثة جديدة! تفضل بطرح أي سؤال يتعلق بـ منهاج البكالوريا السورية أو استخدام المنصة.',
+      },
+    ]);
   };
 
   const renderNavigationLinks = (onNavigate?: () => void) => (
@@ -275,7 +311,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
         </div>
       </header>
 
-      {/* REDESIGNED PREVIOUSLY HORRIBLE MOBILE SIDEBAR DRAWER */}
+      {/* MOBILE SIDEBAR DRAWER */}
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-2xl lg:hidden animate-in fade-in duration-200"
@@ -328,7 +364,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                   </div>
                   <div className="text-right">
                     <span className="block text-xs font-bold text-cyan-200">الرفيق البطل</span>
-                    <span className="block text-[10px] text-slate-300">مساعدك الذكي المنهاجي</span>
+                    <span className="block text-[10px] text-slate-300">مساعدك المنهاجي الذكي</span>
                   </div>
                 </div>
                 <SparkIcon className="h-4 w-4 text-cyan-400 animate-pulse" />
@@ -378,7 +414,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             <div className="bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent p-4 rounded-2xl border border-cyan-500/30 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-bold text-cyan-400">المساعد الذكي</p>
+                  <p className="text-[10px] font-bold text-cyan-400">المساعد المنهاجي الذكي</p>
                   <h3 className="text-base font-extrabold text-white">الرفيق البطل</h3>
                 </div>
                 <div className="p-2 rounded-xl bg-cyan-500 text-slate-950">
@@ -413,103 +449,165 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
       {/* MAIN CONTENT AREA */}
       <main className="min-w-0 flex-1 overflow-y-auto pt-4 lg:pt-0 relative z-10">{children}</main>
 
-      {/* AI ASSISTANT DRAWER */}
+      {/* REDESIGNED AI ASSISTANT DRAWER WITH ANTI-SPAM PROTECTION */}
       {aiOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/80 backdrop-blur-2xl animate-in fade-in duration-200">
           <div className="absolute inset-0 h-full w-full cursor-default" onClick={() => setAiOpen(false)} />
-          <div className="relative flex h-full w-full max-w-md flex-col justify-between border-l border-cyan-500/30 bg-[#070d19] p-6 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right duration-300">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="relative flex h-full w-full max-w-lg flex-col justify-between border-l border-cyan-500/30 bg-[#060c18] p-5 shadow-2xl backdrop-blur-3xl animate-in slide-in-from-right duration-300">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between border-b border-slate-800/90 pb-4">
               <div className="flex items-center gap-3">
-                <span className="p-2.5 rounded-2xl bg-cyan-500 text-slate-950">
+                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-slate-950 font-bold shadow-md shadow-cyan-500/30">
                   <RobotIcon className="h-6 w-6" />
-                </span>
+                </div>
                 <div>
-                  <h4 className="text-lg font-bold text-white">الرفيق البطل</h4>
-                  <span className="text-xs text-slate-400">مساعد دراسي ذكي للبكالوريا</span>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-lg font-extrabold text-white">الرفيق البطل</h4>
+                    <span className="px-2 py-0.5 text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-full">
+                      منهاج البكالوريا السورية
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    مخصص حصرياً للمواد والامتحانات والمنصة
+                  </span>
                 </div>
               </div>
 
-              <button
-                onClick={() => setAiOpen(false)}
-                className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
-              >
-                <CloseIcon className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleClearChat}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold border border-slate-700 transition"
+                  title="مسح المحادثة"
+                >
+                  مسح
+                </button>
+                <button
+                  onClick={() => setAiOpen(false)}
+                  className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+                  aria-label="إغلاق المحادثة"
+                >
+                  <CloseIcon className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="mb-4 flex-1 space-y-4 overflow-y-auto pr-1">
+            {/* Messages Chat Area */}
+            <div className="my-4 flex-1 space-y-4 overflow-y-auto pr-1">
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`rounded-2xl p-4 text-sm font-medium leading-relaxed border ${
+                  className={`rounded-2xl p-4 text-sm font-medium leading-relaxed border transition-all ${
                     msg.sender === 'ai'
-                      ? 'bg-slate-900/90 border-slate-800 text-slate-100'
-                      : 'bg-cyan-500/20 border-cyan-400/40 text-white self-end'
+                      ? 'bg-slate-900/95 border-slate-800 text-slate-100 shadow-sm'
+                      : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-cyan-400/40 text-white self-end'
                   }`}
                 >
-                  <p className="mb-1 text-[10px] font-bold text-cyan-400">
-                    {msg.sender === 'ai' ? 'الرفيق البطل' : 'أنا'}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-extrabold text-cyan-400 flex items-center gap-1.5">
+                      {msg.sender === 'ai' ? (
+                        <>
+                          <RobotIcon className="w-3.5 h-3.5" />
+                          <span>الرفيق البطل (مساعد المنهاج)</span>
+                        </>
+                      ) : (
+                        <span>أنا</span>
+                      )}
+                    </span>
+
+                    {msg.sender === 'ai' && (
+                      <button
+                        onClick={() => handleCopyText(msg.text, idx)}
+                        className="text-[10px] text-slate-400 hover:text-cyan-300 px-2 py-0.5 rounded bg-slate-800/80 transition"
+                      >
+                        {copiedIndex === idx ? '✓ تم النسخ' : 'نسخ النص'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="whitespace-pre-wrap leading-relaxed text-xs md:text-sm font-sans dir-rtl">
+                    {msg.text}
                   </p>
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
                 </div>
               ))}
+
               {isTyping && (
-                <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 animate-pulse">
-                  الرفيق البطل يحلل السؤال ويكتب إجابة دقيقة...
+                <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-xs text-cyan-300 animate-pulse flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  <span>الرفيق البطل يراجع المنهاج ويكتب لك إجابة دقيقة...</span>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
 
-            {/* AI Shortcut Buttons */}
-            <div className="mb-4 grid grid-cols-2 gap-2">
+            {/* Quick Baccalaureate Topic Shortcuts */}
+            <div className="mb-3 grid grid-cols-2 gap-2">
               <button
-                onClick={() => handleAskAI('تكامل وقوانين الرياضيات')}
-                className="bg-slate-900 border border-slate-800 py-2.5 px-3 rounded-xl text-xs text-slate-300 hover:text-white hover:border-cyan-500 inline-flex items-center justify-center gap-2"
+                onClick={() => handleAskAI('شرح قوانين تكامل الرياضيات وتطبيقاتها')}
+                disabled={isTyping || cooldown > 0}
+                className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500 py-2 px-2.5 rounded-xl text-[11px] text-slate-300 hover:text-white transition flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                <MathIcon className="h-3.5 w-3.5" /> الرياضيات
+                <MathIcon className="h-3.5 w-3.5 text-cyan-400" /> قوانين الرياضيات
               </button>
               <button
-                onClick={() => handleAskAI('قوانين الفيزياء')}
-                className="bg-slate-900 border border-slate-800 py-2.5 px-3 rounded-xl text-xs text-slate-300 hover:text-white hover:border-cyan-500 inline-flex items-center justify-center gap-2"
+                onClick={() => handleAskAI('ملخص قوانين النواسات وحركة الفيزياء')}
+                disabled={isTyping || cooldown > 0}
+                className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500 py-2 px-2.5 rounded-xl text-[11px] text-slate-300 hover:text-white transition flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                <LightningIcon className="h-3.5 w-3.5 text-cyan-400" /> الفيزياء
+                <LightningIcon className="h-3.5 w-3.5 text-amber-400" /> مسودات الفيزياء
               </button>
               <button
-                onClick={() => handleAskAI('ثوابت وقوانين الكيمياء')}
-                className="bg-slate-900 border border-slate-800 py-2.5 px-3 rounded-xl text-xs text-slate-300 hover:text-white hover:border-cyan-500 inline-flex items-center justify-center gap-2"
+                onClick={() => handleAskAI('قوانين وثوابت المعايرة والتوازن الكيميائي')}
+                disabled={isTyping || cooldown > 0}
+                className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500 py-2 px-2.5 rounded-xl text-[11px] text-slate-300 hover:text-white transition flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                <ChemistryIcon className="h-3.5 w-3.5" /> الكيمياء
+                <ChemistryIcon className="h-3.5 w-3.5 text-emerald-400" /> الكيمياء الوزارية
               </button>
               <button
-                onClick={() => handleAskAI('نصائح لتنظيم الوقت')}
-                className="bg-slate-900 border border-slate-800 py-2.5 px-3 rounded-xl text-xs text-slate-300 hover:text-white hover:border-cyan-500 inline-flex items-center justify-center gap-2"
+                onClick={() => handleAskAI('كيف أحسب مجموعي في البكالوريا ومفاضلة الجامعات؟')}
+                disabled={isTyping || cooldown > 0}
+                className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500 py-2 px-2.5 rounded-xl text-[11px] text-slate-300 hover:text-white transition flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                <ClockIcon className="h-3.5 w-3.5" /> تنظيم الوقت
+                <ClockIcon className="h-3.5 w-3.5 text-purple-400" /> حساب المفاضلة
               </button>
             </div>
 
+            {/* Input Form with Character Counter & Anti-Spam Cooldown */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 handleAskAI(inputValue);
               }}
-              className="flex gap-2"
+              className="space-y-2"
             >
-              <input
-                type="text"
-                required
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="اسألني أي شيء في المنهاج..."
-                className="min-w-0 flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
-              <button
-                type="submit"
-                className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-5 py-3 rounded-2xl text-sm transition"
-              >
-                إرسال
-              </button>
+              <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
+                <span>أسئلة حصرياً في المنهاج السوري والمنصة</span>
+                <span>
+                  {inputValue.length}/500 حرف {cooldown > 0 && `• يرجى الانتظار (${cooldown}ث)`}
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  maxLength={500}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder={
+                    cooldown > 0
+                      ? `يرجى الانتظار ${cooldown} ثوانٍ...`
+                      : 'اسألني أي سؤال في المواد أو المنصة...'
+                  }
+                  disabled={isTyping || cooldown > 0}
+                  className="min-w-0 flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={isTyping || cooldown > 0 || !inputValue.trim()}
+                  className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold px-5 py-3 rounded-2xl text-xs md:text-sm transition disabled:opacity-50 shadow-md shadow-cyan-500/20 flex items-center justify-center gap-1.5"
+                >
+                  <span>إرسال</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>
