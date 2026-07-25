@@ -1,0 +1,16 @@
+{
+  "name": "المنصة التعليمية للبكالوريا السورية",
+  "short_name": "بكالوريا سوريا",
+  "description": "منصة تعليمية متكاملة لطلاب البكالوريا السورية (علمي وأدبي)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffaf0",
+  "theme_color": "#ffd500",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
