@@ -355,15 +355,6 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
         {children}
       </main>
 
-      {/* Floating Mobile AI Trigger */}
-      <button
-        onClick={() => setAiOpen(!aiOpen)}
-        className="fixed bottom-6 left-6 z-40 flex h-14 w-14 items-center justify-center rounded-full liquid-glass-glow text-foreground shadow-2xl hover:scale-105 cursor-pointer lg:hidden border border-cyan-400/40 animate-float-slow focus-ring smooth-interaction"
-        title="مساعد الذكاء الاصطناعي"
-        aria-label="مساعد الذكاء الاصطناعي"
-      >
-        <RobotIcon className="h-6 w-6 text-cyan-400" />
-      </button>
 
       {/* AI Assistant Drawer */}
       {aiOpen && (
