@@ -74,6 +74,7 @@ export default function LessonDetailPage({ params }: PageProps) {
             id: lesData.id,
             subject_id: lesData.subject_id,
             name: lesData.name,
+            unit: lesData.unit || staticMatch?.unit || 'الوحدة المقررة',
             content: lesData.content || staticMatch?.content || '',
             video_url: lesData.video_url || staticMatch?.video_url || '',
             order_index: lesData.order_index || 1,
@@ -237,7 +238,7 @@ export default function LessonDetailPage({ params }: PageProps) {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-6 gap-4">
             <div>
               <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3.5 py-1 rounded-full inline-block font-medium">
-                الشرح المرئي والملاحظات الوزارية
+                {lesson.unit || 'الشرح المرئي والملاحظات الوزارية'}
               </span>
               <h1 className="text-3xl sm:text-4xl font-display font-normal text-foreground mt-3 leading-snug">{lesson.name}</h1>
             </div>
@@ -262,28 +263,44 @@ export default function LessonDetailPage({ params }: PageProps) {
 
           {/* Embedded Real YouTube Video Player */}
           {embedUrl ? (
-            <div className="overflow-hidden rounded-3xl border border-cyan-500/30 bg-black aspect-video shadow-2xl relative group">
-              <iframe
-                src={embedUrl}
-                title={lesson.name}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full border-0"
-              ></iframe>
+            <div className="space-y-3">
+              <div className="overflow-hidden rounded-3xl border border-cyan-500/30 bg-black aspect-video shadow-2xl relative group">
+                <iframe
+                  src={embedUrl}
+                  title={lesson.name}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full border-0"
+                ></iframe>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/70 p-4 rounded-2xl border border-white/10 text-xs">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Video className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>شاهد الفيديو المباشر أو ابحث عن كافة شروحات أساتذة البكالوريا لهذا الدرس:</span>
+                </div>
+                <a
+                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent('شرح بكالوريا سوريا ' + lesson.name)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="liquid-glass-glow rounded-xl px-4 py-2 text-xs font-bold text-cyan-300 hover:text-white transition border border-cyan-400/40 inline-flex items-center gap-1.5 shrink-0"
+                >
+                  🔍 البحث المباشر في يوتيوب عن «{lesson.name}»
+                </a>
+              </div>
             </div>
-          ) : lesson.video_url ? (
+          ) : (
             <div className="liquid-glass rounded-3xl p-8 text-center space-y-4 border border-white/10">
-              <p className="text-foreground text-sm font-medium">شاهد الفيديو التوضيحي للدرس على يوتيوب:</p>
+              <p className="text-foreground text-sm font-medium">شاهد كافة الشروحات المرئية المطابقة لـ «{lesson.name}» على يوتيوب:</p>
               <a
-                href={lesson.video_url}
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent('شرح بكالوريا سوريا ' + lesson.name)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 liquid-glass-glow rounded-full px-8 py-3 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40"
               >
-                مشاهدة الفيديو على يوتيوب <Video className="w-4 h-4 text-cyan-400" />
+                مشاهدة الشروحات المطابقة للدرس على يوتيوب 🔍 <Video className="w-4 h-4 text-cyan-400" />
               </a>
             </div>
-          ) : null}
+          )}
 
           {/* Detailed Verified Lesson Notes */}
           {lesson.content && (
