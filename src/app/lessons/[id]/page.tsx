@@ -271,42 +271,42 @@ export default function LessonDetailPage({ params }: PageProps) {
                   className="w-full h-full border-0"
                 ></iframe>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#282825] bg-[#bce9fa] p-4 text-xs">
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Video className="w-4 h-4 text-[#e94225] shrink-0" />
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-[#282825] bg-[#bce9fa] p-4 text-xs">
+                <div className="flex items-center gap-2 text-[#171714] font-bold">
+                  <Video className="w-4 h-4 text-[#ff5636] shrink-0" />
                   <span>شاهد الفيديو المباشر أو ابحث عن كافة شروحات أساتذة البكالوريا لهذا الدرس:</span>
                 </div>
                 <a
                   href={`https://www.youtube.com/results?search_query=${encodeURIComponent('شرح بكالوريا سوريا ' + lesson.name)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="student-panel rounded-xl px-4 py-2 text-xs font-bold text-[#e94225] hover:text-white transition border border-[#282825] inline-flex items-center gap-1.5 shrink-0"
+                  className="rounded-xl bg-white px-4 py-2 text-xs font-extrabold text-[#ff5636] hover:bg-[#ff5636] hover:text-white transition-all border border-[#282825] inline-flex items-center gap-1.5 shrink-0 shadow-sm"
                 >
                   🔍 البحث المباشر في يوتيوب عن «{lesson.name}»
                 </a>
               </div>
             </div>
           ) : (
-            <div className="student-card rounded-3xl p-8 text-center space-y-4 border border-[#deddd7]">
-              <p className="text-[#282825] text-sm font-medium">شاهد كافة الشروحات المرئية المطابقة لـ «{lesson.name}» على يوتيوب:</p>
+            <div className="student-card rounded-3xl p-8 text-center space-y-4 border-2 border-[#282825] bg-white">
+              <p className="text-[#171714] text-sm font-bold">شاهد كافة الشروحات المرئية المطابقة لـ «{lesson.name}» على يوتيوب:</p>
               <a
                 href={`https://www.youtube.com/results?search_query=${encodeURIComponent('شرح بكالوريا سوريا ' + lesson.name)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 student-panel rounded-full px-8 py-3 text-xs font-medium text-[#282825] hover:scale-105 transition-transform border border-[#282825]"
+                className="inline-flex items-center gap-2 app-button px-8 py-3 text-xs font-extrabold text-white"
               >
-                مشاهدة الشروحات المطابقة للدرس على يوتيوب 🔍 <Video className="w-4 h-4 text-[#e94225]" />
+                مشاهدة الشروحات المطابقة للدرس على يوتيوب 🔍 <Video className="w-4 h-4 text-white" />
               </a>
             </div>
           )}
 
           {/* Detailed Verified Lesson Notes */}
           {lesson.content && (
-            <div className="rounded-[24px] border border-[#282825] bg-[#f0efe9] p-6 text-right sm:p-8 space-y-4">
-              <h3 className="text-2xl font-display font-normal text-[#282825] border-b border-[#deddd7] pb-3">
+            <div className="rounded-[24px] border-2 border-[#282825] bg-[#f4f3ee] p-6 text-right sm:p-8 space-y-4 shadow-sm">
+              <h3 className="text-2xl font-extrabold text-[#171714] border-b border-[#deddd7] pb-3">
                 شرح الملاحظات والاستنتاجات الهامة
               </h3>
-              <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">
+              <div className="text-sm sm:text-base text-[#171714] font-semibold leading-relaxed whitespace-pre-wrap font-sans">
                 {lesson.content}
               </div>
             </div>
@@ -314,9 +314,9 @@ export default function LessonDetailPage({ params }: PageProps) {
 
           {/* PDF Files & Summaries */}
           <div className="space-y-6 pt-4 border-t border-[#deddd7]">
-            <h3 className="text-2xl sm:text-3xl font-display font-normal text-[#282825]">الملخصات وأوراق العمل</h3>
+            <h3 className="text-2xl sm:text-3xl font-extrabold text-[#171714]">الملخصات وأوراق العمل</h3>
             {files.length === 0 ? (
-              <p className="text-xs text-[#6e6e67] student-card p-6 rounded-2xl border border-[#deddd7]">
+              <p className="text-xs font-bold text-[#171714] bg-[#fafaf7] p-6 rounded-2xl border-2 border-dashed border-[#282825]">
                 لا توجد ملفات مرفقة بهذا الدرس حالياً.
               </p>
             ) : (

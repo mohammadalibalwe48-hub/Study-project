@@ -311,8 +311,26 @@ select {
 
 @media (max-width: 640px) {
   body {
-    background-image: radial-gradient(circle at 90% 0%, rgba(34, 211, 238, .1), transparent 20rem);
+    background-image: radial-gradient(circle at 90% 0%, rgba(255, 255, 255, .5), transparent 20rem);
   }
+}
+
+/* High-contrast text legibility rules for light surfaces */
+.text-slate-200,
+.text-slate-300,
+.text-slate-400 {
+  color: #282825 !important;
+}
+
+.text-muted-foreground {
+  color: #484842;
+  font-weight: 600;
+}
+
+.text-cyan-300,
+.text-cyan-200 {
+  color: #0284c7;
+  font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {
