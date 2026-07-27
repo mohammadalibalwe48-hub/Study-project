@@ -69,7 +69,7 @@ export default function NotFound() {
           <div className="relative w-10 h-10 rounded-full overflow-hidden shadow-md border border-white/20">
             <Image
               src="/images/logo.png"
-              alt="شعار منصة البكالوريا"
+              alt="شعار منصة مسار"
               fill
               sizes="40px"
               className="object-cover group-hover:scale-105 transition-transform"
@@ -77,7 +77,7 @@ export default function NotFound() {
             />
           </div>
           <span className="text-white font-display text-2xl tracking-tight">
-            منصة البكالوريا
+            منصة مسار
           </span>
         </Link>
 

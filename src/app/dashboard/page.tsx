@@ -6,7 +6,6 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase/client';
 import SidebarLayout from '@/components/SidebarLayout';
 import { BookIcon, ScienceIcon, SparkIcon } from '@/components/icons/SvgIcons';
-import EducationalTools from '@/components/dashboard/EducationalTools';
 import RecommendedCourses from '@/components/dashboard/RecommendedCourses';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import { getUserXPAndStreak } from '@/utils/xpHelper';
@@ -258,19 +257,19 @@ export default function DashboardPage() {
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 flex flex-col lg:flex-row gap-8 h-full w-full">
+      <div className="flex-1 flex flex-col lg:flex-row gap-5 h-full w-full max-w-[1500px] mx-auto">
 
         {/* Central Content Area */}
-        <section className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-10 overflow-y-auto border border-white/15">
+        <section className="flex-1 liquid-glass-glow rounded-3xl p-4 sm:p-6 lg:p-7 flex flex-col gap-7 lg:gap-8 overflow-y-auto border border-white/15">
 
           {/* Student Welcome Banner Header */}
-          <div className="relative liquid-glass rounded-3xl p-8 border border-white/20 overflow-hidden flex flex-col gap-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+          <div className="relative liquid-glass rounded-2xl p-4 sm:p-6 lg:p-7 border border-white/20 overflow-hidden flex flex-col gap-5">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="space-y-2">
                 <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3.5 py-1 rounded-full inline-block font-medium">
                   الفرع {currentBranchName}
                 </span>
-                <h1 className="text-4xl sm:text-5xl font-display font-normal text-foreground flex items-center gap-3">
+                <h1 className="text-3xl sm:text-4xl font-bold text-foreground flex items-center gap-3">
                   مرحباً بك، {profile?.full_name || 'طالب البكالوريا'} <Sparkles className="w-8 h-8 text-amber-400" />
                 </h1>
                 <p className="text-muted-foreground text-sm leading-relaxed max-w-xl">
@@ -282,7 +281,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => router.push('/subjects')}
-                  className="liquid-glass-glow rounded-full px-6 py-3 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40"
+                  className="rounded-xl bg-cyan-400 px-5 py-3 text-xs font-bold text-slate-950 hover:bg-cyan-300 transition-colors border border-cyan-300/30"
                 >
                   متابعة المذاكرة ←
                 </button>
@@ -290,20 +289,20 @@ export default function DashboardPage() {
             </div>
 
             {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-white/10">
-              <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-right">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10">
+              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
                 <span className="text-[11px] text-muted-foreground block">معدل الإنجاز</span>
                 <span className="text-3xl font-display text-emerald-400">{averageScorePercent}%</span>
               </div>
-              <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-right">
+              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
                 <span className="text-[11px] text-muted-foreground block">اختبارات مكتملة</span>
                 <span className="text-3xl font-display text-cyan-300">{totalQuizzesCount}</span>
               </div>
-              <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-right">
+              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
                 <span className="text-[11px] text-muted-foreground block">نقاط الخبرة (XP)</span>
                 <span className="text-3xl font-display text-amber-400">{xpData?.xp || 0}</span>
               </div>
-              <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-right">
+              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
                 <span className="text-[11px] text-muted-foreground block">سلسلة المذاكرة</span>
                 <span className="text-3xl font-display text-rose-400">{xpData?.streak_days || 0} أيام</span>
               </div>
@@ -311,7 +310,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Search Bar */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="relative flex flex-col sm:flex-row items-center gap-4 justify-between w-full">
               <div className="relative w-full flex items-center">
                 <input
@@ -319,7 +318,8 @@ export default function DashboardPage() {
                   placeholder="ابحث عن درس، قانون، أو مادة دراسية..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-right liquid-glass rounded-2xl py-4 pr-6 pl-12 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-cyan-400/40"
+                  aria-label="البحث في محتوى المنصة"
+                  className="w-full text-right liquid-glass rounded-xl py-3.5 pr-5 pl-12 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-cyan-400/40"
                 />
                 <span className="absolute left-4 text-muted-foreground">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -328,11 +328,6 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
-          </div>
-
-          {/* Educational Tools Section */}
-          <div className="relative">
-            <EducationalTools xpData={xpData} />
           </div>
 
           {/* Enrolled Courses Section */}

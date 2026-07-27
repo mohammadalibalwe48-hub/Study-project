@@ -117,7 +117,7 @@ export default function PwaInstaller() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-sm text-cyan-300">تطبيق البكالوريا السورية</h4>
+                <h4 className="font-extrabold text-sm text-cyan-300">تطبيق منصة مسار</h4>
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-cyan-500/20 text-cyan-300 rounded-full border border-cyan-500/30">
                   تطبيق PWA
                 </span>

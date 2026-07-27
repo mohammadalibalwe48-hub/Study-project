@@ -81,62 +81,12 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   }, [mobileMenuOpen, aiOpen]);
 
   const menuItems: MenuItem[] = [
-    {
-      name: 'لوحة التحكم',
-      path: '/dashboard',
-      icon: <HomeIcon className="h-5 w-5" />,
-      id: 'dashboard',
-      description: 'ملخص التقدم والأهداف',
-    },
-    {
-      name: 'النماذج الوزارية',
-      path: '/dashboard/exams',
-      icon: <BookOpenIcon className="h-5 w-5" />,
-      id: 'exams',
-      description: 'أسئلة وسلالم الدورات',
-    },
-    {
-      name: 'المواد الدراسية',
-      path: '/subjects',
-      icon: <ChemistryIcon className="h-5 w-5" />,
-      id: 'subjects',
-      description: 'الدروس والاختبارات',
-    },
-    {
-      name: 'المكتبة الشاملة',
-      path: '/library',
-      icon: <LibraryIcon className="h-5 w-5" />,
-      id: 'library',
-      description: 'الملخصات ودروس PDF',
-    },
-    {
-      name: 'أساتذة المنصة',
-      path: '/mentors',
-      icon: <MentorIcon className="h-5 w-5" />,
-      id: 'mentors',
-      description: 'نخبة الأساتذة المختصين',
-    },
-    {
-      name: 'المنتدى التعليمي',
-      path: '/forum',
-      icon: <ForumIcon className="h-5 w-5" />,
-      id: 'forum',
-      description: 'نقاشات واستفسارات الطلاب',
-    },
-    {
-      name: 'الدعم والمساعدة',
-      path: '/support',
-      icon: <HelpIcon className="h-5 w-5" />,
-      id: 'support',
-      description: 'المساعدة الفنية والتوجيه',
-    },
-    {
-      name: 'الملف الشخصي',
-      path: '/profile',
-      icon: <UserIcon className="h-5 w-5" />,
-      id: 'profile',
-      description: 'إعدادات الملف الشخصي',
-    },
+    { name: 'الرئيسية', path: '/dashboard', icon: <HomeIcon className="h-5 w-5" />, id: 'dashboard', description: 'ملخصك الدراسي اليوم' },
+    { name: 'المواد والدروس', path: '/subjects', icon: <ChemistryIcon className="h-5 w-5" />, id: 'subjects', description: 'اختر مادة وابدأ التعلم' },
+    { name: 'الاختبارات', path: '/dashboard/exams', icon: <BookOpenIcon className="h-5 w-5" />, id: 'exams', description: 'تدرّب على النماذج الوزارية' },
+    { name: 'المكتبة', path: '/library', icon: <LibraryIcon className="h-5 w-5" />, id: 'library', description: 'ملخصات وملفات مفيدة' },
+    { name: 'المجتمع', path: '/forum', icon: <ForumIcon className="h-5 w-5" />, id: 'forum', description: 'اسأل وشارك الطلاب' },
+    { name: 'حسابي', path: '/profile', icon: <UserIcon className="h-5 w-5" />, id: 'profile', description: 'بياناتك وإعداداتك' },
   ];
 
   if (role === 'admin') {
@@ -226,25 +176,23 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             href={item.path}
             onClick={onNavigate}
             aria-current={isActive ? 'page' : undefined}
-            className={`group relative flex items-center justify-between gap-3.5 rounded-2xl px-4 py-3.5 text-right transition-all duration-300 ${
-              isActive
-                ? 'bg-gradient-to-r from-cyan-500/20 via-cyan-500/10 to-transparent text-white border border-cyan-400/40 shadow-lg shadow-cyan-950/40 font-semibold'
-                : 'bg-slate-900/40 text-slate-300 hover:text-white hover:bg-slate-800/60 border border-slate-800/60'
-            }`}
+            className={`group relative flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-right transition-all duration-200 ${isActive
+              ? 'bg-cyan-400/12 text-white border border-cyan-400/35 shadow-md shadow-cyan-950/25 font-semibold'
+              : 'bg-white/[.02] text-slate-300 hover:text-white hover:bg-white/[.06] border border-white/[.07]'
+              }`}
           >
             <div className="flex items-center gap-3.5 min-w-0">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110 ${
-                  isActive
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
-                    : 'bg-slate-800/80 text-slate-400 group-hover:text-cyan-400 group-hover:bg-slate-700'
-                }`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-200 ${isActive
+                  ? 'bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'bg-slate-800/80 text-slate-400 group-hover:text-cyan-300 group-hover:bg-slate-700'
+                  }`}
               >
                 {item.icon}
               </span>
               <div className="min-w-0 flex-1">
-                <span className="block text-sm font-bold leading-snug">{item.name}</span>
-                <span className="block truncate text-[11px] text-slate-400 mt-0.5 font-normal">
+                <span className="block text-[13px] font-bold leading-snug">{item.name}</span>
+                <span className="block truncate text-[10px] text-slate-400 mt-0.5 font-normal">
                   {item.description}
                 </span>
               </div>
@@ -261,7 +209,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
 
   return (
     <div
-      className="min-h-screen bg-[#040812] text-foreground font-body p-0 lg:flex lg:gap-8 lg:p-8 relative overflow-hidden"
+      className="min-h-screen text-foreground font-body p-3 sm:p-4 lg:p-6 lg:flex lg:gap-6 relative overflow-hidden"
       dir="rtl"
     >
       {/* Fullscreen Looping Background Video */}
@@ -284,16 +232,16 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
       <div className="fixed -bottom-40 right-1/3 w-[500px] h-[500px] rounded-full bg-sky-600/15 blur-[130px] pointer-events-none z-0" />
 
       {/* MOBILE TOP NAVIGATION BAR */}
-      <header className="sticky top-0 z-40 border-b border-cyan-500/20 bg-slate-950/85 px-4 py-3.5 backdrop-blur-2xl lg:hidden">
+      <header className="sticky top-0 z-40 border-b border-cyan-500/20 bg-[#071a2b]/95 px-4 py-3.5 backdrop-blur-2xl lg:hidden">
         <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
           <Link href="/dashboard" className="flex items-center gap-3">
             <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-cyan-400/40 shadow-lg shadow-cyan-950/50 bg-slate-900">
               <Image src="/images/logo.png" alt="الشعار" fill sizes="40px" className="object-contain p-1" priority />
             </div>
             <div className="min-w-0 text-right">
-              <span className="block truncate text-base font-extrabold text-white">منصة البكالوريا</span>
+              <span className="block truncate text-base font-extrabold text-white">منصة مسار</span>
               <span className="block truncate text-[10px] font-bold text-cyan-400 tracking-wider">
-                التعليم السينمائي الذكي
+                تعلّم بوضوح، وتقدّم بثبات
               </span>
             </div>
           </Link>
@@ -325,7 +273,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
           />
 
           {/* Sliding Glass Drawer Container */}
-          <aside className="absolute right-0 top-0 bottom-0 flex h-full w-[85vw] max-w-[340px] flex-col justify-between border-l border-cyan-500/30 bg-[#070d19]/95 p-5 shadow-2xl shadow-cyan-950/80 backdrop-blur-3xl animate-in slide-in-from-right duration-300 overflow-y-auto">
+          <aside className="absolute right-0 top-0 bottom-0 flex h-full w-[85vw] max-w-[340px] flex-col justify-between border-l border-cyan-500/30 bg-[#071a2b]/98 p-5 shadow-2xl shadow-cyan-950/80 backdrop-blur-3xl animate-in slide-in-from-right duration-300 overflow-y-auto">
             {/* Drawer Header */}
             <div>
               <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-800/80 pt-2">
@@ -334,7 +282,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                     <Image src="/images/logo.png" alt="الشعار" fill sizes="44px" className="object-contain p-1" />
                   </div>
                   <div>
-                    <h3 className="text-base font-extrabold text-white">منصة البكالوريا</h3>
+                    <h3 className="text-base font-extrabold text-white">منصة مسار</h3>
                     <span className="inline-block px-2 py-0.5 text-[10px] font-bold text-cyan-300 bg-cyan-500/20 rounded-full border border-cyan-500/30 mt-0.5">
                       {role === 'admin' ? 'مشرف النظام' : 'طالب علمي / أدبي'}
                     </span>
@@ -394,7 +342,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
       )}
 
       {/* DESKTOP SIDEBAR */}
-      <aside className="sticky top-8 hidden h-[calc(100vh-4rem)] w-80 shrink-0 flex-col justify-between overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-2xl backdrop-blur-2xl z-10 lg:flex">
+      <aside className="sticky top-6 hidden h-[calc(100vh-3rem)] w-72 shrink-0 flex-col justify-between overflow-hidden rounded-3xl border border-slate-800 bg-[#0a1f31]/95 p-4 shadow-2xl backdrop-blur-2xl z-10 lg:flex" aria-label="الشريط الجانبي">
         <div>
           {/* Sidebar Brand Header */}
           <div className="border-b border-slate-800/80 pb-5 mb-5">
@@ -403,13 +351,14 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                 <Image src="/images/logo.png" alt="الشعار" fill sizes="48px" className="object-contain p-1" priority />
               </div>
               <div className="text-right">
-                <span className="block text-xl font-extrabold text-white">منصة البكالوريا</span>
-                <span className="text-[11px] font-bold text-cyan-400">التعلم السينمائي التفاعلي</span>
+                <span className="block text-xl font-extrabold text-white">منصة مسار</span>
+                <span className="text-[11px] font-bold text-cyan-400">مسارك الذكي للتفوق</span>
               </div>
             </Link>
           </div>
 
           <div className="space-y-4">
+            <p className="px-2 text-[10px] font-bold tracking-wide text-slate-500">مساحتك الدراسية</p>
             {/* AI Helper Banner */}
             <div className="bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent p-4 rounded-2xl border border-cyan-500/30 space-y-3">
               <div className="flex items-center justify-between gap-3">
@@ -431,6 +380,13 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </div>
 
             {renderNavigationLinks()}
+            <div className="mt-5 border-t border-white/10 pt-4">
+              <p className="px-2 text-[10px] font-bold tracking-wide text-slate-500">مساعدة</p>
+              <div className="mt-1 grid gap-1">
+                <Link href="/mentors" className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-white">المدرسون</Link>
+                <Link href="/support" className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-white">الدعم والمساعدة</Link>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -496,11 +452,10 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`rounded-2xl p-4 text-sm font-medium leading-relaxed border transition-all ${
-                    msg.sender === 'ai'
-                      ? 'bg-slate-900/95 border-slate-800 text-slate-100 shadow-sm'
-                      : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-cyan-400/40 text-white self-end'
-                  }`}
+                  className={`rounded-2xl p-4 text-sm font-medium leading-relaxed border transition-all ${msg.sender === 'ai'
+                    ? 'bg-slate-900/95 border-slate-800 text-slate-100 shadow-sm'
+                    : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-cyan-400/40 text-white self-end'
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-extrabold text-cyan-400 flex items-center gap-1.5">

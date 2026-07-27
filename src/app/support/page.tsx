@@ -182,7 +182,7 @@ export default function SupportPage() {
       <header className="relative z-10 w-full flex justify-between items-center liquid-glass rounded-full px-8 py-4 mb-8 border border-white/15">
         <Link href="/" className="flex items-center gap-3">
           <img src="/images/logo.png" className="h-10 w-10 rounded-full border border-white/20 object-cover" alt="الشعار" />
-          <span className="text-2xl font-display text-foreground">منصة البكالوريا</span>
+          <span className="text-2xl font-display text-foreground">منصة مسار</span>
         </Link>
         <Link href="/auth" className="liquid-glass-glow rounded-full px-6 py-2.5 text-xs text-foreground font-medium hover:scale-105 transition-transform border border-cyan-400/40">
           تسجيل الدخول

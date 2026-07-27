@@ -6,11 +6,11 @@ import PwaInstaller from "@/components/pwa/PwaInstaller";
 
 export const metadata: Metadata = {
   title: {
-    default: "منصة البكالوريا السورية الذكية | PWA",
-    template: "%s | منصة البكالوريا السورية",
+    default: "منصة مسار التعليمية الذكية | PWA",
+    template: "%s | منصة مسار التعليمية",
   },
   description:
-    "المنصة التعليمية الأولى لطلاب البكالوريا السورية - مراجعة دروس واختبارات تفاعلية ذكية، وحساب العلامات تلقائياً مع دعم نمط PWA للأوفلاين.",
+    "المنصة التعليمية الأولى لطلاب البكالوريا السورية - منصة مسار تقدم مراجعة دروس واختبارات تفاعلية ذكية، وحساب العلامات تلقائياً مع دعم نمط PWA للأوفلاين.",
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -23,6 +23,8 @@ export const metadata: Metadata = {
     ],
   },
   keywords: [
+    "منصة مسار",
+    "مسار التعليمية",
     "البكالوريا السورية",
     "منصة تعليمية",
     "اختبارات تفاعلية",
@@ -32,14 +34,14 @@ export const metadata: Metadata = {
     "نماذج وزارية",
     "تطبيق PWA",
   ],
-  authors: [{ name: "منصة البكالوريا السورية" }],
+  authors: [{ name: "منصة مسار التعليمية" }],
   openGraph: {
-    title: "منصة البكالوريا السورية الذكية | PWA",
+    title: "منصة مسار التعليمية الذكية | PWA",
     description:
-      "المنصة التعليمية الأولى لطلاب البكالوريا السورية - مراجعة دروس واختبارات تفاعلية ذكية.",
+      "المنصة التعليمية الأولى لطلاب البكالوريا السورية - منصة مسار تقدم مراجعة دروس واختبارات تفاعلية ذكية.",
     type: "website",
     locale: "ar_SY",
-    images: [{ url: "/images/logo.png", width: 500, height: 500, alt: "شعار البكالوريا السورية" }],
+    images: [{ url: "/images/logo.png", width: 500, height: 500, alt: "شعار منصة مسار" }],
   },
 };
 
@@ -47,7 +49,6 @@ export const viewport: Viewport = {
   themeColor: "#06b6d4",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -66,7 +67,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/apple-icon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" integrity="sha384-GvrOXuhFURyBkB54FfYHFOlHOnH7T128Nxyb48Yvh6g23ZwJwuIdn50wcomD4gEB" crossOrigin="anonymous" />
       </head>
       <body
