@@ -164,50 +164,50 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 xl:grid-cols-[1.4fr_.8fr]">
-          <article className="relative overflow-hidden rounded-[24px] border-2 border-slate-900 bg-[#e9d5ff] p-6 sm:p-8">
-            <div className="absolute -left-10 -top-14 h-48 w-48 rounded-full bg-[#d8b4fe] opacity-70" />
+        <section className="grid gap-5 xl:grid-cols-[1.45fr_.85fr]">
+          <article className="relative overflow-hidden rounded-[24px] border-2 border-[#282825] bg-gradient-to-br from-[#e9d5ff] via-[#f3e8ff] to-[#fae8ff] p-6 shadow-md transition-all duration-200 hover:shadow-lg sm:p-8">
+            <div className="absolute -left-10 -top-14 h-52 w-52 rounded-full bg-[#d8b4fe] opacity-60 blur-xl" />
             <div className="relative z-10 max-w-xl">
-              <span className="app-chip bg-white"><Target className="h-4 w-4 text-[#ff5636]" /> خطوتك التالية</span>
-              <p className="mt-6 text-sm font-bold text-slate-700">{nextLesson?.subjects?.name || subjects[0]?.name || 'مادتك الأولى'}</p>
+              <span className="app-chip border-[#282825] bg-white shadow-sm"><Target className="h-4 w-4 text-[#ff5636]" /> خطوتك التالية</span>
+              <p className="mt-5 text-sm font-bold text-slate-700">{nextLesson?.subjects?.name || subjects[0]?.name || 'مادتك الأولى'}</p>
               <h2 className="mt-1 text-2xl font-extrabold text-slate-900 sm:text-3xl">{nextLesson?.name || 'ابدأ باستكشاف دروس مادتك'}</h2>
-              <p className="mt-3 flex items-center gap-2 text-sm text-slate-700"><Clock3 className="h-4 w-4" /> 25 دقيقة مقترحة</p>
-              <Link href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} className="app-button mt-6">ابدأ الآن <ArrowLeft className="h-4 w-4" /></Link>
+              <p className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700"><Clock3 className="h-4 w-4 text-[#ff5636]" /> 25 دقيقة مقترحة</p>
+              <Link href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} className="app-button mt-6 shadow-md">ابدأ الآن <ArrowLeft className="h-4 w-4" /></Link>
             </div>
-            <div className="absolute bottom-5 left-8 hidden rotate-[-8deg] rounded-[20px] border-2 border-slate-900 bg-[#ffd64d] px-5 py-3 font-extrabold shadow-[5px_5px_0_#0f172a] sm:block">تقدم بثبات!</div>
+            <div className="absolute bottom-6 left-8 hidden rotate-[-6deg] rounded-[20px] border-2 border-[#282825] bg-[#ffd64d] px-5 py-3 font-extrabold shadow-[4px_4px_0_#282825] transition-transform hover:scale-105 sm:block">تقدم بثبات! 🚀</div>
           </article>
 
-          <article className="app-card bg-white p-6">
-            <div className="flex items-start justify-between"><div><p className="text-sm font-extrabold">إنجاز اليوم</p><p className="mt-1 text-xs text-[#77776f]">{completedToday} من {todayTasks.length} مهام مكتملة</p></div><strong className="text-3xl font-extrabold">{completionPercent}%</strong></div>
-            <div className="mt-5 h-3 overflow-hidden rounded-full border border-slate-300 bg-[#f1f0eb]"><div className="h-full rounded-full bg-[#ff5636] transition-all" style={{ width: `${completionPercent}%` }} /></div>
-            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-[#deddd7] pt-5"><div><span className="text-xs text-[#77776f]">متوسط الاختبارات</span><strong className="mt-1 block text-xl">{averageScore}%</strong></div><div><span className="text-xs text-[#77776f]">نقاط الخبرة</span><strong className="mt-1 block text-xl">{xpData?.xp || 0}</strong></div></div>
+          <article className="app-card bg-white p-6 shadow-sm">
+            <div className="flex items-start justify-between"><div><p className="text-base font-extrabold text-[#171714]">إنجاز اليوم</p><p className="mt-1 text-xs text-[#6e6e67]">{completedToday} من {todayTasks.length} مهام مكتملة</p></div><strong className="text-3xl font-extrabold text-[#ff5636]">{completionPercent}%</strong></div>
+            <div className="mt-5 h-3.5 overflow-hidden rounded-full border border-[#deddd7] bg-[#f1f0eb] p-0.5"><div className="h-full rounded-full bg-gradient-to-r from-[#ff5636] to-[#ff7d63] transition-all duration-300" style={{ width: `${completionPercent}%` }} /></div>
+            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-[#deddd7] pt-5"><div><span className="text-xs font-bold text-[#6e6e67]">متوسط الاختبارات</span><strong className="mt-1 block text-2xl font-extrabold text-[#171714]">{averageScore}%</strong></div><div><span className="text-xs font-bold text-[#6e6e67]">نقاط الخبرة (XP)</span><strong className="mt-1 block text-2xl font-extrabold text-[#ff5636]">{xpData?.xp || 0}</strong></div></div>
           </article>
         </section>
 
         <section>
-          <div className="mb-3 flex items-end justify-between"><div><h2 className="text-2xl font-extrabold">دوراتي</h2><p className="mt-1 text-xs text-[#77776f]">تابع تقدمك في المواد الأساسية</p></div><Link href="/subjects" className="text-sm font-bold text-[#ff5636]">عرض الكل <ChevronLeft className="inline h-4 w-4" /></Link></div>
+          <div className="mb-4 flex items-end justify-between"><div><h2 className="text-2xl font-extrabold text-[#171714]">دوراتي الدراسية</h2><p className="mt-1 text-xs text-[#6e6e67]">تابع تقدمك في المواد الأساسية للمنهاج</p></div><Link href="/subjects" className="text-sm font-bold text-[#ff5636] hover:underline">عرض الكل <ChevronLeft className="inline h-4 w-4" /></Link></div>
           <div className="grid gap-4 md:grid-cols-3">
             {visibleSubjects.length > 0 ? visibleSubjects.map((subject, index) => {
               const theme = colorThemes[index % colorThemes.length];
               const progress = index === 0 ? 34 : index === 1 ? 58 : 76;
               return (
-                <article key={subject.id} className={`app-card ${theme.bg} ${theme.border} p-5 transition hover:-translate-y-1`}>
+                <article key={subject.id} className={`app-card ${theme.bg} ${theme.border} p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md`}>
                   <div className="flex items-start justify-between">
-                    <span className={`rounded-lg px-3 py-1 text-xs font-bold ${theme.tag}`}>{subject.name}</span>
+                    <span className={`rounded-xl px-3 py-1 text-xs font-extrabold ${theme.tag}`}>{subject.name}</span>
                     <Bookmark className="h-5 w-5 text-slate-700" />
                   </div>
-                  <h3 className="mt-5 min-h-[58px] text-xl font-extrabold leading-snug text-slate-900">{subject.name}</h3>
-                  <div className="mt-4 flex items-center justify-between text-xs font-bold text-slate-700"><span>التقدم</span><span>{progress}%</span></div>
-                  <div className="mt-2 h-2.5 overflow-hidden rounded-full border border-slate-300 bg-white/80">
+                  <h3 className="mt-4 min-h-[54px] text-xl font-extrabold leading-snug text-slate-900">{subject.name}</h3>
+                  <div className="mt-4 flex items-center justify-between text-xs font-bold text-slate-700"><span>التقدم الدراسي</span><span>{progress}%</span></div>
+                  <div className="mt-2 h-2.5 overflow-hidden rounded-full border border-slate-400/40 bg-white/90">
                     <div className={`h-full rounded-full ${theme.accent}`} style={{ width: `${progress}%` }} />
                   </div>
-                  <div className="mt-5 flex items-center justify-between">
+                  <div className="mt-5 flex items-center justify-between pt-2">
                     <span className="flex -space-x-2 space-x-reverse">
                       <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-[#ff5636] text-[10px] font-bold text-white">م</span>
                       <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-[#0284c7] text-[10px] font-bold text-white">س</span>
                       <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-slate-700 text-[9px] font-bold text-white">+8</span>
                     </span>
-                    <Link href={`/subjects/${subject.id}`} className="app-button min-h-9 px-4 py-1.5 text-xs">متابعة</Link>
+                    <Link href={`/subjects/${subject.id}`} className="app-button min-h-9 px-4 py-1.5 text-xs font-extrabold shadow-sm">متابعة</Link>
                   </div>
                 </article>
               );
@@ -215,16 +215,16 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_300px]">
-          <article className="app-card bg-white p-5 sm:p-6">
-            <div className="flex items-center justify-between"><div><h2 className="text-xl font-extrabold">مهامي القادمة</h2><p className="mt-1 text-xs text-[#77776f]">أنهِ المهام بالترتيب المناسب لك</p></div><Link href="/dashboard/planner" className="text-xs font-bold text-[#ff5636]">عرض المخطط</Link></div>
-            <div className="mt-5 space-y-1">
-              {todayTasks.length === 0 ? <div className="rounded-2xl border border-dashed border-[#aaa9a2] p-7 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[#77776f]" /><p className="mt-3 font-bold">يومك فارغ حتى الآن</p><p className="mt-1 text-xs text-[#77776f]">أضف مهمة صغيرة يمكنك إنجازها اليوم.</p></div> : todayTasks.slice(0, 5).map((task) => <button key={task.id} onClick={() => toggleTask(task)} className="flex w-full items-center gap-3 border-b border-[#deddd7] px-1 py-3 text-right hover:bg-[#fafaf7]"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-400 ${task.completed ? 'bg-[#ffd64d]' : 'bg-white text-transparent'}`}>{task.completed ? <Check className="h-4 w-4" /> : <Circle className="h-3 w-3" />}</span><span className="min-w-0 flex-1"><strong className={`block text-sm ${task.completed ? 'text-[#77776f] line-through' : ''}`}>{task.title}</strong>{task.subjects?.name && <small className="text-xs text-[#ff5636]">{task.subjects.name}</small>}</span><small className="text-xs text-[#77776f]">اليوم</small></button>)}
+        <section className="grid gap-4 xl:grid-cols-[1fr_310px]">
+          <article className="app-card bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex items-center justify-between"><div><h2 className="text-xl font-extrabold text-[#171714]">مهامي القادمة</h2><p className="mt-1 text-xs text-[#6e6e67]">أنهِ المهام بالترتيب المناسب لك</p></div><Link href="/dashboard/planner" className="text-xs font-bold text-[#ff5636] hover:underline">عرض المخطط</Link></div>
+            <div className="mt-5 space-y-1.5">
+              {todayTasks.length === 0 ? <div className="rounded-2xl border border-dashed border-[#aaa9a2] bg-[#fafaf7] p-7 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[#77776f]" /><p className="mt-3 font-bold text-[#171714]">يومك فارغ حتى الآن</p><p className="mt-1 text-xs text-[#6e6e67]">أضف مهمة صغيرة يمكنك إنجازها اليوم.</p></div> : todayTasks.slice(0, 5).map((task) => <button key={task.id} onClick={() => toggleTask(task)} className="flex w-full items-center gap-3 border-b border-[#deddd7] px-2 py-3 text-right transition hover:bg-[#fafaf7]"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-[#282825] transition ${task.completed ? 'bg-[#ffd64d] text-[#171714]' : 'bg-white text-transparent'}`}>{task.completed ? <Check className="h-4 w-4" /> : <Circle className="h-3 w-3" />}</span><span className="min-w-0 flex-1"><strong className={`block text-sm font-bold ${task.completed ? 'text-[#77776f] line-through' : 'text-[#171714]'}`}>{task.title}</strong>{task.subjects?.name && <small className="text-xs font-bold text-[#ff5636]">{task.subjects.name}</small>}</span><small className="text-xs font-bold text-[#77776f]">اليوم</small></button>)}
             </div>
-            <form onSubmit={addTodayTask} className="mt-4 flex gap-2"><input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="أضف مهمة لليوم..." aria-label="مهمة جديدة" className="app-input min-w-0 flex-1 text-sm" /><button disabled={addingTask || !taskTitle.trim()} className="app-button flex h-[46px] w-[46px] shrink-0 items-center justify-center p-0"><Plus className="h-5 w-5" /></button></form>
+            <form onSubmit={addTodayTask} className="mt-4 flex gap-2"><input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="أضف مهمة لليوم..." aria-label="مهمة جديدة" className="app-input min-w-0 flex-1 text-sm" /><button disabled={addingTask || !taskTitle.trim()} className="app-button flex h-[46px] w-[46px] shrink-0 items-center justify-center p-0 shadow-sm"><Plus className="h-5 w-5" /></button></form>
           </article>
 
-          <aside className="rounded-[24px] border border-slate-800 bg-[#0f172a] p-5 text-white shadow-lg"><div className="flex items-center gap-2 text-[#ffd64d]"><Sparkles className="h-5 w-5" /><span className="text-xs font-bold">اقتراح مخصص لك</span></div><h2 className="mt-5 text-2xl font-extrabold leading-snug">مستعد لتحدٍ جديد؟</h2><p className="mt-3 text-sm leading-7 text-slate-300">اختبر معلوماتك بنموذج قصير واحصل على نقاط خبرة إضافية.</p><div className="mt-5 flex items-center gap-2 text-xs text-slate-300"><Trophy className="h-4 w-4 text-[#ffd64d]" /> +20 XP عند الإكمال</div><Link href="/dashboard/exams" className="app-button mt-6 flex w-full items-center justify-center gap-2 py-3 text-sm font-extrabold text-white">ابدأ الاختبار <ArrowLeft className="h-4 w-4" /></Link></aside>
+          <aside className="relative overflow-hidden rounded-[24px] border-2 border-[#282825] bg-gradient-to-br from-[#ffd64d] via-[#ffe685] to-[#fff0b3] p-6 text-[#171714] shadow-md"><div className="flex items-center gap-2 text-[#171714]"><Sparkles className="h-5 w-5 text-[#ff5636]" /><span className="text-xs font-extrabold">اقتراح مخصص لك</span></div><h2 className="mt-4 text-2xl font-extrabold leading-snug">مستعد لتحدٍ جديد؟</h2><p className="mt-3 text-sm font-medium leading-7 text-slate-800">اختبر معلوماتك بنموذج قصير واحصل على نقاط خبرة إضافية.</p><div className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-800"><Trophy className="h-4 w-4 text-[#ff5636]" /> +20 XP عند الإكمال</div><Link href="/dashboard/exams" className="app-button mt-6 flex w-full items-center justify-center gap-2 py-3 text-sm font-extrabold text-white shadow-md">ابدأ الاختبار <ArrowLeft className="h-4 w-4" /></Link></aside>
         </section>
       </main>
     </SidebarLayout>
