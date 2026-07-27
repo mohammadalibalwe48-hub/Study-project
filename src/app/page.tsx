@@ -85,39 +85,45 @@ export default function HomePage() {
         )}
       </header>
 
-      <section className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_.9fr] lg:py-24">
-        <div className="max-w-2xl">
-          <span className="mb-5 inline-flex rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-1.5 text-sm font-bold text-cyan-300">
-            لطلاب البكالوريا السورية
-          </span>
-          <h1 className="text-4xl font-extrabold leading-[1.25] sm:text-5xl lg:text-6xl">
-            كل ما تحتاجه للدراسة،
-            <span className="block text-cyan-300">في مسار واضح وبسيط.</span>
-          </h1>
-          <p className="mt-6 max-w-xl text-base leading-8 text-slate-300 sm:text-lg">
-            اختر المادة، ادرس الدرس، ثم اختبر نفسك. مسار تجمع لك الدروس والنماذج والملخصات دون تشتيت.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href={destination} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-300">
-              {user ? 'تابع من حيث توقفت' : 'أنشئ حسابك وابدأ'}
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <Link href="/subjects" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-6 py-3 font-bold text-white hover:bg-white/10">
-              تصفح المواد
-            </Link>
-          </div>
-          <p className="mt-4 text-sm text-slate-400">تسجيل مجاني • يعمل على الهاتف • تقدم محفوظ تلقائيًا</p>
-        </div>
-
-        <div className="liquid-glass-glow rounded-3xl p-5 sm:p-7">
-          <p className="mb-4 text-sm font-bold text-slate-300">اختر مادة لتبدأ</p>
-          <div className="grid grid-cols-2 gap-3">
-            {subjectLinks.map((subject) => (
-              <Link key={subject.name} href="/subjects" className="group rounded-2xl border border-white/10 bg-white/[.035] p-4 hover:border-cyan-400/40 hover:bg-cyan-400/[.06]">
-                <Image src={subject.image} alt="" width={72} height={72} className="mb-3 h-14 w-14 object-contain" />
-                <span className="font-bold group-hover:text-cyan-300">{subject.name}</span>
+      <section className="relative isolate overflow-hidden border-b border-white/10">
+        <video autoPlay loop muted playsInline preload="auto" aria-hidden="true" className="absolute inset-0 -z-20 h-full w-full object-cover">
+          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 -z-10 bg-gradient-to-l from-[#071a2b]/80 via-[#071a2b]/50 to-[#071a2b]/25" />
+        <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_.9fr] lg:py-24">
+          <div className="max-w-2xl">
+            <span className="mb-5 inline-flex rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-1.5 text-sm font-bold text-cyan-300">
+              لطلاب البكالوريا السورية
+            </span>
+            <h1 className="text-4xl font-extrabold leading-[1.25] sm:text-5xl lg:text-6xl">
+              كل ما تحتاجه للدراسة،
+              <span className="block text-cyan-300">في مسار واضح وبسيط.</span>
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-8 text-slate-300 sm:text-lg">
+              اختر المادة، ادرس الدرس، ثم اختبر نفسك. مسار تجمع لك الدروس والنماذج والملخصات دون تشتيت.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href={destination} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-300">
+                {user ? 'تابع من حيث توقفت' : 'أنشئ حسابك وابدأ'}
+                <ArrowLeft className="h-5 w-5" />
               </Link>
-            ))}
+              <Link href="/subjects" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-6 py-3 font-bold text-white hover:bg-white/10">
+                تصفح المواد
+              </Link>
+            </div>
+            <p className="mt-4 text-sm text-slate-400">تسجيل مجاني • يعمل على الهاتف • تقدم محفوظ تلقائيًا</p>
+          </div>
+
+          <div className="liquid-glass-glow rounded-3xl p-5 sm:p-7">
+            <p className="mb-4 text-sm font-bold text-slate-300">اختر مادة لتبدأ</p>
+            <div className="grid grid-cols-2 gap-3">
+              {subjectLinks.map((subject) => (
+                <Link key={subject.name} href="/subjects" className="group rounded-2xl border border-white/10 bg-white/[.035] p-4 hover:border-cyan-400/40 hover:bg-cyan-400/[.06]">
+                  <Image src={subject.image} alt="" width={72} height={72} className="mb-3 h-14 w-14 object-contain" />
+                  <span className="font-bold group-hover:text-cyan-300">{subject.name}</span>
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
       </section>
