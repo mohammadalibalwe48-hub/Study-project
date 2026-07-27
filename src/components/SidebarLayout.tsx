@@ -73,14 +73,14 @@ function NavigationLinks({
             title={item.label}
             className={
               mobile
-                ? `flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-bold transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white' : 'border-transparent bg-[#f1f0eb] text-[#171714] hover:bg-[#e4e2d9]'}`
-                : `group relative flex h-11 w-11 items-center justify-center rounded-xl border transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md' : 'border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-800/80 hover:text-white'}`
+                ? `flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-bold transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-sm' : 'border-transparent bg-[#f1f0eb] text-[#171714] hover:bg-[#e4e2d9]'}`
+                : `group relative flex h-11 w-11 items-center justify-center rounded-xl border transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md' : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'}`
             }
           >
             <Icon className="h-[19px] w-[19px]" strokeWidth={2} />
             {mobile && <span>{item.label}</span>}
             {!mobile && (
-              <span className="pointer-events-none absolute right-[calc(100%+12px)] z-30 hidden whitespace-nowrap rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-100 shadow-xl group-hover:block">
+              <span className="pointer-events-none absolute right-[calc(100%+12px)] z-30 hidden whitespace-nowrap rounded-lg border border-[#282825] bg-[#282825] px-3 py-1.5 text-xs font-bold text-white shadow-xl group-hover:block">
                 {item.label}
               </span>
             )}
@@ -156,24 +156,25 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   return (
     <div className="min-h-screen bg-[#b9ced8] p-0 text-[#171714] lg:p-6 xl:p-8" dir="rtl">
       <div className="app-shell relative mx-auto flex min-h-screen w-full max-w-[1480px] overflow-hidden bg-[#fafaf7] lg:min-h-[calc(100vh-3rem)] lg:rounded-[28px]">
-        <aside className="hidden w-[76px] shrink-0 flex-col items-center border-l border-slate-800 bg-[#0f172a] py-4 lg:flex">
-          <Link href="/dashboard" className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-slate-700 bg-slate-900" aria-label="مسار - الرئيسية">
+        {/* LIGHT DESKTOP SIDEBAR */}
+        <aside className="hidden w-[76px] shrink-0 flex-col items-center border-l border-[#deddd7] bg-[#f5f4ee] py-4 lg:flex">
+          <Link href="/dashboard" className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-[#282825] bg-white shadow-sm" aria-label="مسار - الرئيسية">
             <Image src="/images/logo.png" alt="" fill sizes="44px" className="object-contain p-1" priority />
           </Link>
           <NavigationLinks items={visibleNavigation} pathname={pathname} />
           <div className="mt-auto flex flex-col items-center gap-2">
-            <button onClick={() => setAiOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-white" title="المساعد الذكي">
+            <button onClick={() => setAiOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#deddd7] bg-white text-[#171714] hover:border-[#ff5636] hover:bg-[#ffd64d]" title="المساعد الذكي">
               <Headphones className="h-[19px] w-[19px]" />
             </button>
-            <Link href="/support" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white" title="المساعدة"><CircleHelp className="h-[19px] w-[19px]" /></Link>
-            <Link href="/profile" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white" title="الإعدادات"><Settings className="h-[19px] w-[19px]" /></Link>
-            <button onClick={signOut} className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-[#ff5636] hover:text-white" title="تسجيل الخروج"><LogOut className="h-[19px] w-[19px]" /></button>
+            <Link href="/support" className="flex h-11 w-11 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#eeeDE7] hover:text-[#171714]" title="المساعدة"><CircleHelp className="h-[19px] w-[19px]" /></Link>
+            <Link href="/profile" className="flex h-11 w-11 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#eeeDE7] hover:text-[#171714]" title="الإعدادات"><Settings className="h-[19px] w-[19px]" /></Link>
+            <button onClick={signOut} className="flex h-11 w-11 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#ff5636] hover:text-white" title="تسجيل الخروج"><LogOut className="h-[19px] w-[19px]" /></button>
           </div>
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex min-h-[76px] items-center gap-3 border-b border-[#d6d4cd] bg-[#fafaf7]/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
-            <button onClick={() => setMenuOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#282825] lg:hidden" aria-label="فتح القائمة"><Menu className="h-5 w-5" /></button>
+            <button onClick={() => setMenuOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#282825] bg-white lg:hidden" aria-label="فتح القائمة"><Menu className="h-5 w-5" /></button>
             <Link href="/dashboard" className="flex items-center gap-2 lg:hidden">
               <span className="text-lg font-extrabold">مسار</span><span className="h-2 w-2 rounded-full bg-[#ff5636]" />
             </Link>
