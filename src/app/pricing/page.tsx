@@ -32,7 +32,7 @@ export default function PricingPage() {
           .from('pricing_plans')
           .select('*')
           .order('id', { ascending: true });
-        
+
         if (error) throw error;
         setPlans(data || []);
       } catch (err) {
@@ -45,14 +45,14 @@ export default function PricingPage() {
   }, []);
 
   const content = (
-    <div className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-12 overflow-y-auto text-right border border-white/15">
-      
+    <div className="app-page app-card flex flex-col gap-12 bg-[#fafaf7] text-right">
+
       {/* Header */}
       <div className="text-center space-y-4 max-w-3xl mx-auto">
-        <span className="text-xs font-medium px-4 py-1.5 liquid-glass rounded-full text-cyan-300 border border-cyan-400/20 uppercase inline-block">
+        <span className="app-page-kicker">
           باقات تناسب جميع الطلاب
         </span>
-        <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground">
+        <h1 className="app-page-title">
           خطط الاشتراك وباقات التفوق
         </h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
@@ -71,9 +71,8 @@ export default function PricingPage() {
           {plans.map((plan, idx) => (
             <div
               key={idx}
-              className={`liquid-glass-glow rounded-3xl p-8 border ${
-                plan.popular ? 'border-cyan-400/50 scale-[1.03]' : 'border-white/15'
-              } flex flex-col justify-between relative text-right h-full hover:scale-[1.04] transition-all`}
+              className={`app-card bg-white rounded-3xl p-8 border ${plan.popular ? 'border-cyan-400/50 scale-[1.03]' : 'border-white/15'
+                } flex flex-col justify-between relative text-right h-full hover:scale-[1.04] transition-all`}
             >
               {plan.popular && (
                 <span className="absolute -top-4 left-6 bg-cyan-500 text-slate-950 text-[11px] font-bold px-4 py-1 rounded-full uppercase tracking-wider">
@@ -130,25 +129,13 @@ export default function PricingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#001420] p-6 max-w-7xl mx-auto flex flex-col justify-between relative overflow-hidden" dir="rtl">
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="fixed inset-0 w-full h-full object-cover z-0 opacity-20 pointer-events-none"
-      >
-        <source
-          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4"
-          type="video/mp4"
-        />
-      </video>
-      <header className="relative z-10 w-full flex justify-between items-center liquid-glass rounded-full px-8 py-4 mb-8 border border-white/15">
+    <div className="app-page-canvas" dir="rtl">
+      <header className="app-guest-nav">
         <Link href="/" className="flex items-center gap-3">
           <img src="/images/logo.png" className="h-10 w-10 rounded-full border border-white/20 object-cover" alt="الشعار" />
           <span className="text-2xl font-display text-foreground">منصة مسار</span>
         </Link>
-        <Link href="/auth" className="liquid-glass-glow rounded-full px-6 py-2.5 text-xs text-foreground font-medium hover:scale-105 transition-transform border border-cyan-400/40">
+        <Link href="/auth" className="app-button app-button-secondary min-h-10 rounded-xl px-5 py-2.5 text-xs">
           تسجيل الدخول
         </Link>
       </header>

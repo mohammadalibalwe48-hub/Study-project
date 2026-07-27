@@ -1,355 +1,232 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, Bookmark, CalendarDays, Check, ChevronLeft, Circle, Clock3, Flame, Plus, Search, Sparkles, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase/client';
 import SidebarLayout from '@/components/SidebarLayout';
-import { BookIcon, ScienceIcon, SparkIcon } from '@/components/icons/SvgIcons';
-import RecommendedCourses from '@/components/dashboard/RecommendedCourses';
-import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
-import { getUserXPAndStreak } from '@/utils/xpHelper';
+import { ScienceIcon } from '@/components/icons/SvgIcons';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
-import { Sparkles } from 'lucide-react';
+import { getUserXPAndStreak, awardXP, updateStreak } from '@/utils/xpHelper';
 
-interface Branch {
-  id: number;
-  name: string;
-  slug: string;
-  description: string;
+interface Branch { id: number; name: string; slug: string; description: string; }
+interface Subject { id: number; name: string; description: string; image_url: string | null; }
+interface Lesson { id: number; name: string; subject_id: number; subjects?: { name: string } | null; }
+interface PlannerTask { id: number; title: string; due_date: string | null; completed: boolean; subject_id: number | null; subjects?: { name: string } | null; }
+interface QuizResult { score: number; total_questions: number; completed_at: string; }
+
+function localDateKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-interface Subject {
-  id: number;
-  name: string;
-  description: string;
-  image_url: string | null;
-}
-
-interface QuizResult {
-  score: number;
-  total_questions: number;
-}
+const colorThemes = [
+  { bg: 'bg-[#fff5d6]', accent: 'bg-[#ff5636]', tag: 'bg-[#ff5636] text-white', border: 'border-[#f3ca40]' },
+  { bg: 'bg-[#f3e8ff]', accent: 'bg-[#8b5cf6]', tag: 'bg-[#7c3aed] text-white', border: 'border-[#d8b4fe]' },
+  { bg: 'bg-[#e0f2fe]', accent: 'bg-[#0284c7]', tag: 'bg-[#0284c7] text-white', border: 'border-[#bae6fd]' },
+];
 
 export default function DashboardPage() {
   const { user, profile, loading, refreshProfile, signOut } = useAuth();
+  const router = useRouter();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [tasks, setTasks] = useState<PlannerTask[]>([]);
   const [results, setResults] = useState<QuizResult[]>([]);
+  const [nextLesson, setNextLesson] = useState<Lesson | null>(null);
+  const [xpData, setXpData] = useState<{ xp: number; streak_days: number } | null>(null);
   const [dbLoading, setDbLoading] = useState(true);
   const [updatingBranch, setUpdatingBranch] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [addingTask, setAddingTask] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [realLeaderboard, setRealLeaderboard] = useState<any[]>([]);
-  const [xpData, setXpData] = useState<{ xp: number; streak_days: number } | null>(null);
-  const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth');
-    }
+    if (!loading && !user) router.push('/auth');
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (profile && profile.role === 'admin') {
-      router.push('/admin');
-    }
+    if (profile?.role === 'admin') router.push('/admin');
   }, [profile, router]);
 
   useEffect(() => {
-    async function fetchData(retries = 2) {
+    async function fetchDashboard() {
       if (!user || !profile || profile.role === 'admin') return;
-
+      setDbLoading(true);
       try {
-        setDbLoading(true);
-        const { data: branchData, error: branchErr } = await supabase
-          .from('branches')
-          .select('*');
-        if (branchErr) throw branchErr;
+        const { data: branchData } = await supabase.from('branches').select('*');
         setBranches(branchData || []);
+        if (!profile.branch_id) return;
 
-        if (profile.branch_id) {
-          const { data: subjectData, error: subjectErr } = await supabase
-            .from('subjects')
-            .select('*')
-            .eq('branch_id', profile.branch_id);
-          if (subjectErr) throw subjectErr;
-          setSubjects(subjectData || []);
+        const [{ data: subjectData }, { data: taskData }, { data: resultData }] = await Promise.all([
+          supabase.from('subjects').select('*').eq('branch_id', profile.branch_id),
+          supabase.from('planner_tasks').select('id,title,due_date,completed,subject_id,subjects(name)').eq('user_id', user.id).order('due_date', { ascending: true }),
+          supabase.from('quiz_results').select('score,total_questions,completed_at').eq('user_id', user.id).order('completed_at', { ascending: false }),
+        ]);
 
-          const { data: resultData, error: resultErr } = await supabase
-            .from('quiz_results')
-            .select('score, total_questions')
-            .eq('user_id', user.id);
-          if (resultErr) throw resultErr;
-          setResults(resultData || []);
+        const loadedSubjects = (subjectData || []) as Subject[];
+        setSubjects(loadedSubjects);
+        setTasks((taskData || []) as unknown as PlannerTask[]);
+        setResults((resultData || []) as QuizResult[]);
+        setXpData(await getUserXPAndStreak(user.id));
 
-          // Fetch leaderboard
-          const { data: leaderData, error: leaderErr } = await supabase
-            .from('quiz_results')
-            .select(`
-              score,
-              total_questions,
-              users (
-                full_name
-              ),
-              quizzes (
-                subjects (
-                  name
-                )
-              )
-            `)
-            .order('score', { ascending: false })
-            .limit(5);
-
-          if (!leaderErr && leaderData) {
-            const formatted = leaderData.map((item: any) => {
-              const userName = item.users?.full_name || 'طالب متفوق';
-              const quizObj = Array.isArray(item.quizzes) ? item.quizzes[0] : item.quizzes;
-              const subjectObj = quizObj ? (Array.isArray(quizObj.subjects) ? quizObj.subjects[0] : quizObj.subjects) : null;
-              const subjectName = subjectObj?.name || 'مقرر عام';
-              return {
-                name: userName,
-                course: subjectName,
-                scorePercent: Math.round((item.score / item.total_questions) * 100),
-              };
-            });
-            setRealLeaderboard(formatted);
-          }
-
-          // Fetch XP and streak
-          const xp = await getUserXPAndStreak(user.id);
-          setXpData(xp);
+        if (loadedSubjects.length > 0) {
+          const { data: lessonData } = await supabase.from('lessons').select('id,name,subject_id,subjects(name)').in('subject_id', loadedSubjects.map((subject) => subject.id)).order('order_index', { ascending: true }).limit(1);
+          setNextLesson((lessonData?.[0] as unknown as Lesson) || null);
         }
-        setDbLoading(false);
-      } catch (err: any) {
-        if (err.code === 'PGRST303' && retries > 0) {
-          console.warn('JWT issued in the future (PGRST303). Retrying fetch in 1 second...');
-          setTimeout(() => fetchData(retries - 1), 1000);
-          return;
-        }
-        console.error('Error fetching dashboard data:', {
-          message: err.message || String(err),
-          details: err.details,
-          hint: err.hint,
-          code: err.code,
-        });
+      } finally {
         setDbLoading(false);
       }
     }
-
-    if (user && profile) {
-      fetchData();
-    }
+    fetchDashboard();
   }, [user, profile]);
 
-  const handleSelectBranch = async (branchId: number) => {
+  const today = localDateKey();
+  const todayTasks = useMemo(() => tasks.filter((task) => !task.due_date || task.due_date.slice(0, 10) <= today), [tasks, today]);
+  const completedToday = todayTasks.filter((task) => task.completed).length;
+  const completionPercent = todayTasks.length ? Math.round((completedToday / todayTasks.length) * 100) : 0;
+  const averageScore = results.length ? Math.round(results.reduce((sum, result) => sum + result.score / result.total_questions, 0) / results.length * 100) : 0;
+  const currentBranchName = branches.find((branch) => branch.id === profile?.branch_id)?.name || '';
+  const visibleSubjects = subjects.filter((subject) => subject.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 3);
+
+  async function selectBranch(branchId: number) {
     if (!user) return;
     setUpdatingBranch(true);
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ branch_id: branchId })
-        .eq('id', user.id);
-
-      if (error) throw error;
-      await refreshProfile();
-    } catch (err) {
-      console.error('Error choosing branch:', err);
-      alert('حدث خطأ أثناء حفظ اختيارك، يرجى المحاولة لاحقاً.');
-    } finally {
-      setUpdatingBranch(false);
-    }
-  };
-
-  const handleClearBranch = async () => {
-    if (!user) return;
-    if (!confirm('هل أنت متأكد أنك تريد تغيير فرعك الدراسي؟ سيتم تصفير تقدمك بالفرع الحالي.')) return;
-    setUpdatingBranch(true);
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ branch_id: null })
-        .eq('id', user.id);
-
-      if (error) throw error;
-      await refreshProfile();
-      setSubjects([]);
-    } catch (err) {
-      console.error('Error clearing branch:', err);
-    } finally {
-      setUpdatingBranch(false);
-    }
-  };
-
-  if (loading || dbLoading) {
-    return (
-      <SidebarLayout role={profile?.role} signOut={signOut}>
-        <div className="p-6">
-          <DashboardSkeleton />
-        </div>
-      </SidebarLayout>
-    );
+    const { error } = await supabase.from('users').update({ branch_id: branchId }).eq('id', user.id);
+    if (!error) await refreshProfile();
+    setUpdatingBranch(false);
   }
 
-  // Branch Selection View
+  async function toggleTask(task: PlannerTask) {
+    if (!user) return;
+    const completed = !task.completed;
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, completed } : item));
+    const { error } = await supabase.from('planner_tasks').update({ completed }).eq('id', task.id).eq('user_id', user.id);
+    if (error) setTasks((current) => current.map((item) => item.id === task.id ? task : item));
+    if (!error && completed) {
+      await awardXP(user.id, 10);
+      await updateStreak(user.id);
+    }
+  }
+
+  async function addTodayTask(event: React.FormEvent) {
+    event.preventDefault();
+    if (!user || !taskTitle.trim()) return;
+    setAddingTask(true);
+    const { data, error } = await supabase.from('planner_tasks').insert({ user_id: user.id, title: taskTitle.trim(), due_date: today, completed: false }).select('id,title,due_date,completed,subject_id').single();
+    if (!error && data) {
+      setTasks((current) => [...current, data as PlannerTask]);
+      setTaskTitle('');
+    }
+    setAddingTask(false);
+  }
+
+  if (loading || dbLoading) {
+    return <SidebarLayout role={profile?.role} signOut={signOut}><div className="p-6"><DashboardSkeleton /></div></SidebarLayout>;
+  }
+
   if (profile && !profile.branch_id) {
     return (
       <SidebarLayout role={profile.role} signOut={signOut}>
-        <div className="flex-1 flex flex-col justify-center items-center py-20 px-6 relative overflow-hidden text-center">
-          <div className="w-full max-w-4xl space-y-10">
-            <div className="space-y-4">
-              <span className="liquid-glass-glow rounded-full px-6 py-2 text-xs font-medium uppercase tracking-widest text-cyan-300 border border-cyan-400/30 inline-block">
-                بداية الرحلة الدراسية
-              </span>
-              <h1 className="text-5xl sm:text-7xl font-display font-normal text-foreground">
-                اختر مسارك الدراسي في البكالوريا
-              </h1>
-              <p className="text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
-                يرجى تحديد فرعك الدراسي لتخصيص الدروس والمواد والنماذج امتحانية المؤتمتة.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
-              {branches.map((b) => {
-                const isScientific = b.slug === 'scientific';
-                return (
-                  <div
-                    key={b.id}
-                    className="liquid-glass-glow rounded-3xl p-8 flex flex-col justify-between text-right border border-white/20 hover:scale-[1.03] transition-transform group cursor-pointer"
-                  >
-                    <div className="space-y-6">
-                      <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center border border-cyan-400/30">
-                        {isScientific ? <ScienceIcon className="w-8 h-8" /> : <BookIcon className="w-8 h-8" />}
-                      </div>
-                      <h3 className="text-3xl font-display font-normal text-foreground">{b.name}</h3>
-                      <p className="text-muted-foreground text-sm leading-relaxed">{b.description}</p>
-                    </div>
-
-                    <button
-                      onClick={() => handleSelectBranch(b.id)}
-                      disabled={updatingBranch}
-                      className="liquid-glass-glow w-full mt-8 py-4 rounded-full text-base font-medium text-foreground hover:scale-[1.03] transition-transform cursor-pointer border border-cyan-400/40"
-                    >
-                      {updatingBranch ? 'جاري الحفظ...' : 'اختر هذا الفرع الدراسي'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+        <main className="mx-auto flex min-h-[80vh] w-full max-w-4xl flex-col justify-center px-4 py-12 text-center">
+          <span className="app-chip mx-auto bg-[#ffd64d]">خطوة واحدة للبدء</span>
+          <h1 className="mt-5 text-3xl font-extrabold sm:text-5xl">ما هو فرعك الدراسي؟</h1>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[#6e6e67]">سنستخدم اختيارك لإظهار المواد والدروس المناسبة وإنشاء مساحة دراسية مخصصة لك.</p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            {branches.map((branch) => (
+              <button key={branch.id} onClick={() => selectBranch(branch.id)} disabled={updatingBranch} className="app-card p-6 text-right hover:-translate-y-1 hover:bg-[#ffd64d]">
+                <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-[#282825] bg-[#bce9fa]"><ScienceIcon className="h-6 w-6" /></span>
+                <strong className="block text-xl">{branch.name}</strong>
+                <span className="mt-2 block text-sm leading-6 text-[#6e6e67]">{branch.description}</span>
+              </button>
+            ))}
           </div>
-        </div>
+        </main>
       </SidebarLayout>
     );
   }
 
-  // Calculate statistics
-  const totalQuizzesCount = results.length;
-  const averageScorePercent = totalQuizzesCount > 0
-    ? Math.round((results.reduce((acc, curr) => acc + (curr.score / curr.total_questions), 0) / totalQuizzesCount) * 100)
-    : 0;
-
-  const currentBranchName = branches.find((b) => b.id === profile?.branch_id)?.name || 'غير محدد';
-  const currentLeaderboard = realLeaderboard;
-
-  // Filter subjects by search query
-  const filteredSubjects = subjects.filter((s) =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 flex flex-col lg:flex-row gap-5 h-full w-full max-w-[1500px] mx-auto">
-
-        {/* Central Content Area */}
-        <section className="flex-1 liquid-glass-glow rounded-3xl p-4 sm:p-6 lg:p-7 flex flex-col gap-7 lg:gap-8 overflow-y-auto border border-white/15">
-
-          {/* Student Welcome Banner Header */}
-          <div className="relative liquid-glass rounded-2xl p-4 sm:p-6 lg:p-7 border border-white/20 overflow-hidden flex flex-col gap-5">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="space-y-2">
-                <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3.5 py-1 rounded-full inline-block font-medium">
-                  الفرع {currentBranchName}
-                </span>
-                <h1 className="text-3xl sm:text-4xl font-bold text-foreground flex items-center gap-3">
-                  مرحباً بك، {profile?.full_name || 'طالب البكالوريا'} <Sparkles className="w-8 h-8 text-amber-400" />
-                </h1>
-                <p className="text-muted-foreground text-sm leading-relaxed max-w-xl">
-                  واصل رحلة التفوق والتميز! استكشف الدروس، حل النماذج المؤتمتة، وحقق أهدافك اليوم.
-                </p>
-              </div>
-
-              {/* Action shortcuts */}
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  onClick={() => router.push('/subjects')}
-                  className="rounded-xl bg-cyan-400 px-5 py-3 text-xs font-bold text-slate-950 hover:bg-cyan-300 transition-colors border border-cyan-300/30"
-                >
-                  متابعة المذاكرة ←
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10">
-              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
-                <span className="text-[11px] text-muted-foreground block">معدل الإنجاز</span>
-                <span className="text-3xl font-display text-emerald-400">{averageScorePercent}%</span>
-              </div>
-              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
-                <span className="text-[11px] text-muted-foreground block">اختبارات مكتملة</span>
-                <span className="text-3xl font-display text-cyan-300">{totalQuizzesCount}</span>
-              </div>
-              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
-                <span className="text-[11px] text-muted-foreground block">نقاط الخبرة (XP)</span>
-                <span className="text-3xl font-display text-amber-400">{xpData?.xp || 0}</span>
-              </div>
-              <div className="liquid-glass p-3 rounded-xl border border-white/10 text-right">
-                <span className="text-[11px] text-muted-foreground block">سلسلة المذاكرة</span>
-                <span className="text-3xl font-display text-rose-400">{xpData?.streak_days || 0} أيام</span>
-              </div>
-            </div>
+      <main className="mx-auto w-full max-w-[1180px] space-y-6 pb-10">
+        <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#ff5636]">{new Intl.DateTimeFormat('ar-SY', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</p>
+            <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">أهلًا {profile?.full_name?.split(' ')[0] || 'بك'}، مستعد للتعلّم؟</h1>
+            <p className="mt-2 text-sm text-[#6e6e67]">{currentBranchName} <span className="mx-1">•</span> اجعل اليوم خطوة صغيرة نحو هدفك الكبير</p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="relative w-full sm:w-64 xl:hidden"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#77776f]" /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="app-input w-full pr-9 text-sm" placeholder="ابحث عن مادة..." /></label>
+            <span className="app-chip bg-[#ffd64d]"><Flame className="h-4 w-4" /> {xpData?.streak_days || 0} أيام متتالية</span>
+            <Link href="/dashboard/planner" className="app-button app-button-secondary"><CalendarDays className="h-4 w-4" /> خطتي</Link>
+          </div>
+        </header>
 
-          {/* Quick Search Bar */}
-          <div className="space-y-3">
-            <div className="relative flex flex-col sm:flex-row items-center gap-4 justify-between w-full">
-              <div className="relative w-full flex items-center">
-                <input
-                  type="text"
-                  placeholder="ابحث عن درس، قانون، أو مادة دراسية..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  aria-label="البحث في محتوى المنصة"
-                  className="w-full text-right liquid-glass rounded-xl py-3.5 pr-5 pl-12 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-cyan-400/40"
-                />
-                <span className="absolute left-4 text-muted-foreground">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </span>
-              </div>
+        <section className="grid gap-4 xl:grid-cols-[1.4fr_.8fr]">
+          <article className="relative overflow-hidden rounded-[24px] border-2 border-slate-900 bg-[#e9d5ff] p-6 sm:p-8">
+            <div className="absolute -left-10 -top-14 h-48 w-48 rounded-full bg-[#d8b4fe] opacity-70" />
+            <div className="relative z-10 max-w-xl">
+              <span className="app-chip bg-white"><Target className="h-4 w-4 text-[#ff5636]" /> خطوتك التالية</span>
+              <p className="mt-6 text-sm font-bold text-slate-700">{nextLesson?.subjects?.name || subjects[0]?.name || 'مادتك الأولى'}</p>
+              <h2 className="mt-1 text-2xl font-extrabold text-slate-900 sm:text-3xl">{nextLesson?.name || 'ابدأ باستكشاف دروس مادتك'}</h2>
+              <p className="mt-3 flex items-center gap-2 text-sm text-slate-700"><Clock3 className="h-4 w-4" /> 25 دقيقة مقترحة</p>
+              <Link href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} className="app-button mt-6">ابدأ الآن <ArrowLeft className="h-4 w-4" /></Link>
             </div>
-          </div>
+            <div className="absolute bottom-5 left-8 hidden rotate-[-8deg] rounded-[20px] border-2 border-slate-900 bg-[#ffd64d] px-5 py-3 font-extrabold shadow-[5px_5px_0_#0f172a] sm:block">تقدم بثبات!</div>
+          </article>
 
-          {/* Enrolled Courses Section */}
-          <div className="relative">
-            <RecommendedCourses subjects={filteredSubjects} />
-          </div>
-
+          <article className="app-card bg-white p-6">
+            <div className="flex items-start justify-between"><div><p className="text-sm font-extrabold">إنجاز اليوم</p><p className="mt-1 text-xs text-[#77776f]">{completedToday} من {todayTasks.length} مهام مكتملة</p></div><strong className="text-3xl font-extrabold">{completionPercent}%</strong></div>
+            <div className="mt-5 h-3 overflow-hidden rounded-full border border-slate-300 bg-[#f1f0eb]"><div className="h-full rounded-full bg-[#ff5636] transition-all" style={{ width: `${completionPercent}%` }} /></div>
+            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-[#deddd7] pt-5"><div><span className="text-xs text-[#77776f]">متوسط الاختبارات</span><strong className="mt-1 block text-xl">{averageScore}%</strong></div><div><span className="text-xs text-[#77776f]">نقاط الخبرة</span><strong className="mt-1 block text-xl">{xpData?.xp || 0}</strong></div></div>
+          </article>
         </section>
 
-        {/* Dashboard Sidebar Widget */}
-        <DashboardSidebar
-          profile={profile}
-          currentBranchName={currentBranchName}
-          totalQuizzesCount={totalQuizzesCount}
-          subjectsCount={subjects.length}
-          averageScorePercent={averageScorePercent}
-          currentLeaderboard={currentLeaderboard}
-          userId={user?.id}
-          onClearBranch={handleClearBranch}
-        />
+        <section>
+          <div className="mb-3 flex items-end justify-between"><div><h2 className="text-2xl font-extrabold">دوراتي</h2><p className="mt-1 text-xs text-[#77776f]">تابع تقدمك في المواد الأساسية</p></div><Link href="/subjects" className="text-sm font-bold text-[#ff5636]">عرض الكل <ChevronLeft className="inline h-4 w-4" /></Link></div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {visibleSubjects.length > 0 ? visibleSubjects.map((subject, index) => {
+              const theme = colorThemes[index % colorThemes.length];
+              const progress = index === 0 ? 34 : index === 1 ? 58 : 76;
+              return (
+                <article key={subject.id} className={`app-card ${theme.bg} ${theme.border} p-5 transition hover:-translate-y-1`}>
+                  <div className="flex items-start justify-between">
+                    <span className={`rounded-lg px-3 py-1 text-xs font-bold ${theme.tag}`}>{subject.name}</span>
+                    <Bookmark className="h-5 w-5 text-slate-700" />
+                  </div>
+                  <h3 className="mt-5 min-h-[58px] text-xl font-extrabold leading-snug text-slate-900">{subject.name}</h3>
+                  <div className="mt-4 flex items-center justify-between text-xs font-bold text-slate-700"><span>التقدم</span><span>{progress}%</span></div>
+                  <div className="mt-2 h-2.5 overflow-hidden rounded-full border border-slate-300 bg-white/80">
+                    <div className={`h-full rounded-full ${theme.accent}`} style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="mt-5 flex items-center justify-between">
+                    <span className="flex -space-x-2 space-x-reverse">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-[#ff5636] text-[10px] font-bold text-white">م</span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-[#0284c7] text-[10px] font-bold text-white">س</span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-slate-700 text-[9px] font-bold text-white">+8</span>
+                    </span>
+                    <Link href={`/subjects/${subject.id}`} className="app-button min-h-9 px-4 py-1.5 text-xs">متابعة</Link>
+                  </div>
+                </article>
+              );
+            }) : <div className="app-card col-span-full p-8 text-center text-sm text-[#77776f]">لا توجد مواد مرتبطة بفرعك بعد.</div>}
+          </div>
+        </section>
 
-      </div>
+        <section className="grid gap-4 xl:grid-cols-[1fr_300px]">
+          <article className="app-card bg-white p-5 sm:p-6">
+            <div className="flex items-center justify-between"><div><h2 className="text-xl font-extrabold">مهامي القادمة</h2><p className="mt-1 text-xs text-[#77776f]">أنهِ المهام بالترتيب المناسب لك</p></div><Link href="/dashboard/planner" className="text-xs font-bold text-[#ff5636]">عرض المخطط</Link></div>
+            <div className="mt-5 space-y-1">
+              {todayTasks.length === 0 ? <div className="rounded-2xl border border-dashed border-[#aaa9a2] p-7 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[#77776f]" /><p className="mt-3 font-bold">يومك فارغ حتى الآن</p><p className="mt-1 text-xs text-[#77776f]">أضف مهمة صغيرة يمكنك إنجازها اليوم.</p></div> : todayTasks.slice(0, 5).map((task) => <button key={task.id} onClick={() => toggleTask(task)} className="flex w-full items-center gap-3 border-b border-[#deddd7] px-1 py-3 text-right hover:bg-[#fafaf7]"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-400 ${task.completed ? 'bg-[#ffd64d]' : 'bg-white text-transparent'}`}>{task.completed ? <Check className="h-4 w-4" /> : <Circle className="h-3 w-3" />}</span><span className="min-w-0 flex-1"><strong className={`block text-sm ${task.completed ? 'text-[#77776f] line-through' : ''}`}>{task.title}</strong>{task.subjects?.name && <small className="text-xs text-[#ff5636]">{task.subjects.name}</small>}</span><small className="text-xs text-[#77776f]">اليوم</small></button>)}
+            </div>
+            <form onSubmit={addTodayTask} className="mt-4 flex gap-2"><input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="أضف مهمة لليوم..." aria-label="مهمة جديدة" className="app-input min-w-0 flex-1 text-sm" /><button disabled={addingTask || !taskTitle.trim()} className="app-button flex h-[46px] w-[46px] shrink-0 items-center justify-center p-0"><Plus className="h-5 w-5" /></button></form>
+          </article>
+
+          <aside className="rounded-[24px] border border-slate-800 bg-[#0f172a] p-5 text-white shadow-lg"><div className="flex items-center gap-2 text-[#ffd64d]"><Sparkles className="h-5 w-5" /><span className="text-xs font-bold">اقتراح مخصص لك</span></div><h2 className="mt-5 text-2xl font-extrabold leading-snug">مستعد لتحدٍ جديد؟</h2><p className="mt-3 text-sm leading-7 text-slate-300">اختبر معلوماتك بنموذج قصير واحصل على نقاط خبرة إضافية.</p><div className="mt-5 flex items-center gap-2 text-xs text-slate-300"><Trophy className="h-4 w-4 text-[#ffd64d]" /> +20 XP عند الإكمال</div><Link href="/dashboard/exams" className="app-button mt-6 flex w-full items-center justify-center gap-2 py-3 text-sm font-extrabold text-white">ابدأ الاختبار <ArrowLeft className="h-4 w-4" /></Link></aside>
+        </section>
+      </main>
     </SidebarLayout>
   );
 }

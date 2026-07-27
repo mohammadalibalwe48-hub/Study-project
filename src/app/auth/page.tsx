@@ -89,8 +89,8 @@ export default function AuthPage() {
           setSuccessMsg('تم إنشاء الحساب بنجاح! يرجى التحقق من بريدك الإلكتروني لتأكيد التسجيل.');
         }
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'حدث خطأ غير متوقع');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
     } finally {
       setAuthLoading(false);
     }
@@ -105,34 +105,16 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#001420] font-body flex items-center justify-center p-6 relative overflow-hidden" dir="rtl">
-      {/* Fullscreen Video Background */}
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="fixed inset-0 w-full h-full object-cover z-0 opacity-25 pointer-events-none"
-      >
-        <source
-          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4"
-          type="video/mp4"
-        />
-      </video>
-      {/* Ambient Glowing Blobs */}
-      <div className="fixed -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-cyan-500/15 blur-[120px] pointer-events-none animate-ambient-1 z-0" />
-      <div className="fixed -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-purple-500/15 blur-[140px] pointer-events-none animate-ambient-2 z-0" />
+    <div className="app-page-canvas flex items-center justify-center" dir="rtl">
+      <div className="app-shell w-full max-w-md rounded-[28px] bg-[#fafaf7] p-6 sm:p-10 space-y-8">
 
-      {/* Auth Card Container */}
-      <div className="w-full max-w-md relative z-10 liquid-glass-glow rounded-3xl p-8 sm:p-10 border border-white/20 space-y-8">
-        
         <div className="text-center space-y-3">
           <Link href="/" className="inline-block">
-            <span className="h-14 w-14 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center mx-auto border border-cyan-400/30 font-display">
+            <span className="h-14 w-14 rounded-2xl bg-[#ffd64d] text-[#282825] flex items-center justify-center mx-auto border-2 border-[#282825] font-display">
               <GraduationCap className="w-7 h-7 text-cyan-300" />
             </span>
           </Link>
-          <h1 className="text-4xl sm:text-5xl font-display font-normal text-foreground">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground">
             {isLogin ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
           </h1>
           <p className="text-xs text-muted-foreground">
@@ -141,7 +123,7 @@ export default function AuthPage() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex liquid-glass rounded-full p-1 border border-white/10">
+        <div className="flex rounded-2xl border-2 border-[#282825] bg-[#f0efe9] p-1">
           <button
             type="button"
             onClick={() => {
@@ -149,9 +131,8 @@ export default function AuthPage() {
               setErrorMsg('');
               setSuccessMsg('');
             }}
-            className={`w-1/2 py-2.5 rounded-full text-xs font-medium transition-all ${
-              isLogin ? 'liquid-glass-glow text-foreground border border-cyan-400/40' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className={`w-1/2 py-2.5 rounded-full text-xs font-medium transition-all ${isLogin ? 'app-button text-white' : 'text-muted-foreground hover:text-foreground'
+              }`}
           >
             تسجيل الدخول
           </button>
@@ -162,9 +143,8 @@ export default function AuthPage() {
               setErrorMsg('');
               setSuccessMsg('');
             }}
-            className={`w-1/2 py-2.5 rounded-full text-xs font-medium transition-all ${
-              !isLogin ? 'liquid-glass-glow text-foreground border border-cyan-400/40' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className={`w-1/2 py-2.5 rounded-full text-xs font-medium transition-all ${!isLogin ? 'app-button text-white' : 'text-muted-foreground hover:text-foreground'
+              }`}
           >
             حساب جديد
           </button>
@@ -172,18 +152,18 @@ export default function AuthPage() {
 
         {/* Alerts */}
         {errorMsg && (
-          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 p-4 rounded-2xl text-xs leading-relaxed">
+          <div className="app-status app-status-error leading-relaxed">
             {errorMsg}
           </div>
         )}
         {successMsg && (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 p-4 rounded-2xl text-xs leading-relaxed">
+          <div className="app-status app-status-success leading-relaxed">
             {successMsg}
           </div>
         )}
 
         {/* Auth form */}
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="app-form" onSubmit={handleSubmit}>
           {!isLogin && (
             <div className="space-y-1.5">
               <label htmlFor="full-name" className="block text-xs text-muted-foreground font-medium text-right">
@@ -197,7 +177,7 @@ export default function AuthPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="محمد الأحمد"
-                className="w-full text-right liquid-glass rounded-2xl p-4 text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:border-cyan-400/40"
+                className="app-input w-full text-right text-sm"
               />
             </div>
           )}
@@ -216,7 +196,7 @@ export default function AuthPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="student@example.com"
               dir="ltr"
-              className="w-full text-left liquid-glass rounded-2xl p-4 text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:border-cyan-400/40"
+              className="app-input w-full text-left text-sm"
             />
           </div>
 
@@ -235,7 +215,7 @@ export default function AuthPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 dir="ltr"
-                className="w-full text-left liquid-glass rounded-2xl p-4 pl-12 text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:border-cyan-400/40"
+                className="app-input w-full text-left text-sm pl-12"
               />
               <button
                 type="button"
@@ -253,9 +233,8 @@ export default function AuthPage() {
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
-                        i <= strength ? STRENGTH_META[strength].color : 'bg-white/10'
-                      }`}
+                      className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${i <= strength ? STRENGTH_META[strength].color : 'bg-white/10'
+                        }`}
                     ></div>
                   ))}
                 </div>
@@ -269,7 +248,7 @@ export default function AuthPage() {
           <button
             type="submit"
             disabled={authLoading}
-            className="liquid-glass-glow w-full rounded-full py-4 text-sm font-medium text-foreground hover:scale-[1.02] transition-transform border border-cyan-400/40 mt-4 cursor-pointer"
+            className="app-button w-full mt-4 cursor-pointer"
           >
             {authLoading ? 'جاري التحقق...' : isLogin ? 'تسجيل الدخول ←' : 'تأكيد الحساب ←'}
           </button>

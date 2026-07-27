@@ -2,29 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CalendarDays, Check, Plus, Trash2, Trophy } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase/client';
-import Link from 'next/link';
 import SidebarLayout from '@/components/SidebarLayout';
 import { ListSkeleton } from '@/components/SkeletonLoader';
-import { Check, Trash2 } from 'lucide-react';
 import { awardXP, updateStreak, checkAndUnlockBadges } from '@/utils/xpHelper';
 
-interface Subject {
-  id: number;
-  name: string;
-}
-
-interface PlannerTask {
-  id: number;
-  title: string;
-  due_date: string;
-  is_completed: boolean;
-  subject_id: number | null;
-  subjects?: {
-    name: string;
-  } | null;
-}
+interface Subject { id: number; name: string; }
+interface PlannerTask { id: number; title: string; due_date: string; is_completed: boolean; subject_id: number | null; subjects?: { name: string } | null; }
 
 export default function PlannerPage() {
   const { user, profile, loading, signOut } = useAuth();
@@ -32,263 +18,84 @@ export default function PlannerPage() {
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
   const [dbLoading, setDbLoading] = useState(true);
   const router = useRouter();
-
   const [title, setTitle] = useState('');
-  const [subjectId, setSubjectId] = useState<string>('');
+  const [subjectId, setSubjectId] = useState('');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth');
-    }
-  }, [user, loading, router]);
+  useEffect(() => { if (!loading && !user) router.push('/auth'); }, [user, loading, router]);
 
   const fetchData = async () => {
     if (!user) return;
     try {
       setDbLoading(true);
-
       const { data: subData } = await supabase.from('subjects').select('id, name');
       setSubjects(subData || []);
-
-      const { data: tasksData, error: tasksErr } = await supabase
-        .from('planner_tasks')
-        .select(`
-          id,
-          title,
-          due_date,
-          is_completed,
-          subject_id,
-          subjects (
-            name
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('due_date', { ascending: true });
-
-      if (tasksErr) throw tasksErr;
-      setTasks(tasksData as any || []);
-    } catch (err) {
-      console.error('Error fetching planner data:', err);
-    } finally {
-      setDbLoading(false);
-    }
+      const { data: tasksData, error } = await supabase.from('planner_tasks').select('id,title,due_date,is_completed,subject_id,subjects(name)').eq('user_id', user.id).order('due_date', { ascending: true });
+      if (error) throw error;
+      setTasks((tasksData as unknown as PlannerTask[]) || []);
+    } catch (error) {
+      console.error('Error fetching planner data:', error);
+    } finally { setDbLoading(false); }
   };
 
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user]);
+  useEffect(() => { if (user) void fetchData(); }, [user]);
 
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddTask = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user || !title.trim() || !dueDate) return;
-
     setActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('planner_tasks')
-        .insert({
-          user_id: user.id,
-          title: title.trim(),
-          due_date: dueDate,
-          subject_id: subjectId ? Number(subjectId) : null,
-          is_completed: false,
-        });
-
+      const { error } = await supabase.from('planner_tasks').insert({ user_id: user.id, title: title.trim(), due_date: dueDate, subject_id: subjectId ? Number(subjectId) : null, is_completed: false });
       if (error) throw error;
-
-      await awardXP(user.id, 5);
-      await updateStreak(user.id);
-      await checkAndUnlockBadges(user.id);
-
-      setTitle('');
-      setSubjectId('');
-      await fetchData();
-    } catch (err) {
-      console.error('Error adding task:', err);
-    } finally {
-      setActionLoading(false);
-    }
+      await awardXP(user.id, 5); await updateStreak(user.id); await checkAndUnlockBadges(user.id);
+      setTitle(''); setSubjectId(''); await fetchData();
+    } catch (error) { console.error('Error adding task:', error); }
+    finally { setActionLoading(false); }
   };
 
   const handleToggleTask = async (task: PlannerTask) => {
     if (!user) return;
+    const is_completed = !task.is_completed;
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, is_completed } : item));
     try {
-      const newCompleted = !task.is_completed;
-      const { error } = await supabase
-        .from('planner_tasks')
-        .update({ is_completed: newCompleted })
-        .eq('id', task.id);
-
+      const { error } = await supabase.from('planner_tasks').update({ is_completed }).eq('id', task.id);
       if (error) throw error;
-
-      if (newCompleted) {
-        await awardXP(user.id, 10);
-        await updateStreak(user.id);
-        await checkAndUnlockBadges(user.id);
-      }
-
-      await fetchData();
-    } catch (err) {
-      console.error('Error toggling task:', err);
-    }
+      if (is_completed) { await awardXP(user.id, 10); await updateStreak(user.id); await checkAndUnlockBadges(user.id); }
+    } catch (error) { setTasks((current) => current.map((item) => item.id === task.id ? task : item)); console.error('Error toggling task:', error); }
   };
 
   const handleDeleteTask = async (id: number) => {
     if (!user) return;
-    try {
-      const { error } = await supabase.from('planner_tasks').delete().eq('id', id);
-      if (error) throw error;
-      await fetchData();
-    } catch (err) {
-      console.error('Error deleting task:', err);
-    }
+    setTasks((current) => current.filter((task) => task.id !== id));
+    const { error } = await supabase.from('planner_tasks').delete().eq('id', id);
+    if (error) { console.error('Error deleting task:', error); await fetchData(); }
   };
 
-  if (loading || dbLoading) {
-    return (
-      <SidebarLayout role={profile?.role} signOut={signOut}>
-        <div className="p-8">
-          <ListSkeleton count={4} />
-        </div>
-      </SidebarLayout>
-    );
-  }
+  if (loading || dbLoading) return <SidebarLayout role={profile?.role} signOut={signOut}><div className="p-6"><ListSkeleton count={4} /></div></SidebarLayout>;
 
-  const completedCount = tasks.filter(t => t.is_completed).length;
+  const completedCount = tasks.filter((task) => task.is_completed).length;
+  const progress = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-8 overflow-y-auto text-right border border-white/15">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 border-b border-white/10 pb-6">
-          <div>
-            <span className="text-xs font-medium px-4 py-1.5 liquid-glass rounded-full text-amber-300 border border-amber-400/20 uppercase inline-block">
-              جدول الدراسة والأهداف
-            </span>
-            <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground mt-3">
-              مخطط الدراسة اليومي
-            </h1>
-            <p className="text-muted-foreground text-sm max-w-xl leading-relaxed">
-              نظّم مهامك الدراسية اليومية، حدد مواعيد المراجعة، واكسب +10 XP عند إتمام كل مهمة.
-            </p>
-          </div>
+      <main className="mx-auto w-full max-w-[1100px] space-y-6">
+        <header className="flex flex-col gap-4 border-b border-[#d6d4cd] pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div><span className="app-chip bg-[#ffd64d]"><CalendarDays className="h-4 w-4" /> جدول الدراسة والأهداف</span><h1 className="mt-4 text-3xl font-extrabold sm:text-5xl">مخطط الدراسة اليومي</h1><p className="mt-2 max-w-2xl text-sm leading-7 text-[#6e6e67]">نظّم مهامك، حدد موعد المراجعة، واكسب نقاط خبرة عند إتمام كل خطوة.</p></div>
+          <div className="app-card min-w-40 bg-[#bce9fa] p-4 text-center"><span className="block text-xs text-[#6e6e67]">إنجاز المهام</span><strong className="text-2xl">{completedCount} / {tasks.length}</strong><div className="mt-2 h-2 overflow-hidden rounded-full border border-[#282825] bg-white"><div className="h-full bg-[#ff5636]" style={{ width: `${progress}%` }} /></div></div>
+        </header>
 
-          <div className="liquid-glass rounded-2xl p-4 border border-white/10 text-center shrink-0">
-            <span className="text-xs text-muted-foreground block">إنجاز المهام</span>
-            <span className="text-2xl font-display text-emerald-400">{completedCount} / {tasks.length}</span>
-          </div>
-        </div>
+        <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
+          <form onSubmit={handleAddTask} className="app-card h-fit bg-[#dcbcff] p-5 sm:p-6">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#282825] bg-[#ffd64d]"><Plus className="h-5 w-5" /></span><h2 className="mt-4 text-xl font-extrabold">إضافة هدف جديد</h2><p className="mt-1 text-xs text-[#6e6e67]">قسّم هدفك الكبير إلى مهمة واضحة.</p>
+            <div className="mt-5 space-y-3"><input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: مراجعة درس النواس" className="app-input w-full text-sm" /><select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="app-input w-full text-sm"><option value="">اختر المادة...</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select><input type="date" required value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="app-input w-full text-sm" /><button disabled={actionLoading} className="app-button w-full"><Plus className="h-4 w-4" /> {actionLoading ? 'جاري الإضافة...' : 'إضافة الهدف (+5 XP)'}</button></div>
+          </form>
 
-        {/* Add Task Form */}
-        <form onSubmit={handleAddTask} className="liquid-glass rounded-3xl p-6 border border-white/15 space-y-4">
-          <h3 className="text-xl font-display text-foreground">إضافة هدف دراسي جديد</h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="مثال: مراجعة مسائل النواس الثقيل"
-              className="sm:col-span-2 text-right liquid-glass rounded-2xl p-4 text-foreground placeholder-muted-foreground text-xs focus:outline-none focus:border-cyan-400/40"
-            />
-
-            <select
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              className="liquid-glass rounded-2xl p-4 text-foreground text-xs focus:outline-none border border-white/10"
-            >
-              <option value="" className="bg-[#001420]">اختر المادة...</option>
-              {subjects.map((sub) => (
-                <option key={sub.id} value={sub.id} className="bg-[#001420]">{sub.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">تاريخ الإنجاز:</span>
-              <input
-                type="date"
-                required
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="liquid-glass rounded-2xl px-4 py-2.5 text-xs text-foreground focus:outline-none border border-white/10"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={actionLoading}
-              className="liquid-glass-glow rounded-full px-8 py-3 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 cursor-pointer shrink-0"
-            >
-              {actionLoading ? 'جاري الإضافة...' : 'إضافة الهدف (+5 XP)'}
-            </button>
-          </div>
-        </form>
-
-        {/* Tasks List */}
-        <div className="space-y-4">
-          <h3 className="text-2xl font-display font-normal text-foreground">قائمة الأهداف المسجلة</h3>
-
-          {tasks.length === 0 ? (
-            <div className="liquid-glass rounded-3xl p-12 text-center text-muted-foreground text-sm border border-white/10">
-              لا توجد مهام دراسية مسجلة بعد. أضف هدفك الأول للبدء!
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className={`liquid-glass rounded-2xl p-4 border flex items-center justify-between transition-all ${
-                    task.is_completed ? 'border-emerald-400/30 bg-emerald-500/5 opacity-80' : 'border-white/10'
-                  }`}
-                >
-                  <div className="flex items-center gap-4 text-right">
-                    <button
-                      onClick={() => handleToggleTask(task)}
-                      className={`h-6 w-6 rounded-full flex items-center justify-center border transition-colors cursor-pointer ${
-                        task.is_completed
-                          ? 'bg-emerald-500 border-emerald-400 text-black'
-                          : 'border-white/30 text-transparent hover:border-white'
-                      }`}
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-
-                    <div>
-                      <h4 className={`text-sm font-medium ${task.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                        {task.title}
-                      </h4>
-                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                        {task.subjects?.name && (
-                          <span className="text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-0.5 rounded-full">
-                            {task.subjects.name}
-                          </span>
-                        )}
-                        <span>تاريخ: {task.due_date}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="text-xs text-muted-foreground hover:text-rose-400 p-2 flex items-center gap-1 cursor-pointer"
-                  >
-                    حذف <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-      </div>
+          <section className="app-card bg-white p-5 sm:p-6"><div className="flex items-center justify-between border-b border-[#deddd7] pb-4"><div><h2 className="text-xl font-extrabold">قائمة أهدافك</h2><p className="mt-1 text-xs text-[#6e6e67]">ابدأ بالأهم، ثم انتقل إلى التالي.</p></div><Trophy className="h-6 w-6 text-[#ff5636]" /></div>
+            {tasks.length === 0 ? <div className="mt-5 rounded-2xl border border-dashed border-[#aaa9a2] p-12 text-center text-sm text-[#6e6e67]">لا توجد مهام بعد. أضف هدفك الأول للبدء.</div> : <div className="mt-3 divide-y divide-[#deddd7]">{tasks.map((task) => <div key={task.id} className="flex items-center gap-3 py-4"><button onClick={() => handleToggleTask(task)} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#282825] ${task.is_completed ? 'bg-[#ffd64d]' : 'bg-white text-transparent'}`} aria-label="تغيير حالة المهمة"><Check className="h-4 w-4" /></button><div className="min-w-0 flex-1"><h3 className={`text-sm font-bold ${task.is_completed ? 'text-[#888880] line-through' : ''}`}>{task.title}</h3><div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#6e6e67]">{task.subjects?.name && <span className="rounded-full border border-[#282825] bg-[#bce9fa] px-2 py-0.5 font-bold">{task.subjects.name}</span>}<span>{new Intl.DateTimeFormat('ar-SY').format(new Date(`${task.due_date}T00:00:00`))}</span></div></div><button onClick={() => handleDeleteTask(task.id)} className="flex h-9 w-9 items-center justify-center rounded-xl text-[#77776f] hover:bg-[#ff5636] hover:text-white" aria-label="حذف المهمة"><Trash2 className="h-4 w-4" /></button></div>)}</div>}
+          </section>
+        </section>
+      </main>
     </SidebarLayout>
   );
 }
