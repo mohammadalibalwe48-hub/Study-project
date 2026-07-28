@@ -5,11 +5,9 @@ import SidebarLayout from '@/components/SidebarLayout';
 import { useAuth } from '@/context/AuthContext';
 import LiveRoomCard from '@/components/LiveRoomCard';
 import { LiveRoom } from '@/data/liveRoomsData';
-import { Radio, Plus, Search, Video, Mic, X, Check, Database, Sparkles } from 'lucide-react';
+import { Radio, Plus, Search, Video, Mic, X, Check, Database, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase/client';
-
-const STORAGE_KEY = 'masar_live_rooms_store';
 
 export default function LiveRoomsLobbyPage() {
   const { profile, signOut } = useAuth();
@@ -27,32 +25,74 @@ export default function LiveRoomsLobbyPage() {
   const [newIsTutorSession, setNewIsTutorSession] = useState(false);
   const [newDescription, setNewDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 
-  // 1. Load Rooms from LocalStorage & Supabase
-  useEffect(() => {
+  // 1. Fetch Active Rooms from Supabase Database & Global Channel
+  async function fetchSupabaseRooms() {
+    setIsLoadingRooms(true);
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setRooms(parsed);
-      }
-    } catch {
-      // Ignore storage errors
-    }
-  }, []);
+      // First try fetching from live_rooms table
+      const { data: dbRooms, error } = await supabase
+        .from('live_rooms')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  // Save to LocalStorage whenever rooms state updates
-  function updateRoomsState(updater: (prev: LiveRoom[]) => LiveRoom[]) {
-    setRooms((prev) => {
-      const next = updater(prev);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // Ignore
+      if (!error && dbRooms && dbRooms.length > 0) {
+        const formatted: LiveRoom[] = dbRooms.map((r: any) => ({
+          id: String(r.id),
+          title: r.title,
+          subject: r.subject || 'الفيزياء',
+          hostName: r.host_name || r.hostName || 'طالب مسار',
+          isTutorSession: Boolean(r.is_tutor_session ?? r.isTutorSession),
+          activeCount: r.active_count || 1,
+          maxCount: r.max_count || 30,
+          tags: r.tags || ['مباشر الان'],
+          description: r.description || 'غرفة بث ومذاكرة تفاعلية.',
+          createdAt: new Date(r.created_at || Date.now()).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
+        }));
+        setRooms(formatted);
+      } else {
+        // Fallback: load rooms from Supabase room_messages table or local cache
+        const { data: msgRooms } = await supabase
+          .from('room_messages')
+          .select('room_id, message, created_at')
+          .not('room_id', 'is', null)
+          .order('created_at', { ascending: false });
+
+        if (msgRooms && msgRooms.length > 0) {
+          const uniqueRoomIds = Array.from(new Set(msgRooms.map((m: any) => m.room_id))).filter(Boolean);
+          const fallbackRooms: LiveRoom[] = uniqueRoomIds.map((rid: any) => {
+            // Check local room details or generate clean room
+            const localSaved = typeof window !== 'undefined' ? localStorage.getItem(`masar_room_${rid}`) : null;
+            if (localSaved) {
+              try { return JSON.parse(localSaved); } catch {}
+            }
+            return {
+              id: String(rid),
+              title: `غرفة بث ومذاكرة تفاعلية (${rid})`,
+              subject: 'الفيزياء والعلوم',
+              hostName: 'طالب مسار',
+              isTutorSession: false,
+              activeCount: 1,
+              maxCount: 20,
+              tags: ['مباشر الان'],
+              description: 'غرفة بث ومذاكرة تفاعلية نشطة الآن.',
+              createdAt: 'الآن',
+            };
+          });
+          setRooms(fallbackRooms);
+        }
       }
-      return next;
-    });
+    } catch (err) {
+      console.warn('Supabase rooms fetch info:', err);
+    } finally {
+      setIsLoadingRooms(false);
+    }
   }
+
+  useEffect(() => {
+    fetchSupabaseRooms();
+  }, []);
 
   // 2. Fetch Subjects from Supabase
   useEffect(() => {
@@ -73,17 +113,19 @@ export default function LiveRoomsLobbyPage() {
     loadSupabaseSubjects();
   }, []);
 
-  // 3. Supabase Realtime Broadcast for Room Creation Sync
+  // 3. Supabase Realtime Channel & Postgres Changes Subscriptions
   useEffect(() => {
-    const channel = supabase.channel('live_rooms_lobby', {
+    const channel = supabase.channel('global_live_rooms_lobby', {
       config: { broadcast: { self: true } }
     });
 
+    // Listen for broadcast events when any user creates a room
     channel.on('broadcast', { event: 'new_room_created' }, (payload) => {
       if (payload?.payload?.room) {
-        updateRoomsState((prev) => {
-          if (prev.some((r) => r.id === payload.payload.room.id)) return prev;
-          return [payload.payload.room, ...prev];
+        const newR = payload.payload.room;
+        setRooms((prev) => {
+          if (prev.some((r) => r.id === newR.id)) return prev;
+          return [newR, ...prev];
         });
       }
     });
@@ -120,28 +162,43 @@ export default function LiveRoomsLobbyPage() {
       createdAt: 'الآن',
     };
 
-    // Save individual room metadata for the active room page
+    // Store in localStorage for fast local retrieval
     try {
       localStorage.setItem(`masar_room_${roomId}`, JSON.stringify(newRoomObj));
-    } catch {
-      // Ignore
+    } catch {}
+
+    // 1. Insert into Supabase Table `live_rooms`
+    try {
+      await supabase.from('live_rooms').insert({
+        id: roomId,
+        title: newRoomObj.title,
+        subject: newRoomObj.subject,
+        host_name: newRoomObj.hostName,
+        is_tutor_session: newRoomObj.isTutorSession,
+        max_count: newRoomObj.maxCount,
+        description: newRoomObj.description,
+      });
+    } catch (err) {
+      console.warn('Supabase DB room insert info:', err);
     }
 
+    // 2. Broadcast to all online users via Supabase Realtime Broadcast Channel
     try {
-      const channel = supabase.channel('live_rooms_lobby');
+      const channel = supabase.channel('global_live_rooms_lobby');
       await channel.send({
         type: 'broadcast',
         event: 'new_room_created',
         payload: { room: newRoomObj },
       });
     } catch (err) {
-      console.warn('Realtime room creation broadcast:', err);
-    } finally {
-      updateRoomsState((prev) => [newRoomObj, ...prev]);
-      setIsSubmitting(false);
-      setCreateModalOpen(false);
-      router.push(`/live-rooms/${roomId}`);
+      console.warn('Supabase Realtime broadcast info:', err);
     }
+
+    // Update local state and navigate
+    setRooms((prev) => [newRoomObj, ...prev]);
+    setIsSubmitting(false);
+    setCreateModalOpen(false);
+    router.push(`/live-rooms/${roomId}`);
   }
 
   return (
@@ -154,12 +211,12 @@ export default function LiveRoomsLobbyPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-[#ff5636] text-white border-2 border-[#282825] shadow-[1.5px_1.5px_0_#282825]">
                 <Radio className="w-4 h-4 animate-pulse" />
-                <span>غرف البث والدردشة المباشرة 🎙️📹</span>
+                <span>غرف البث التفاعلي المباشر 🎙️📹</span>
               </span>
 
               <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-white text-[#282825] border-2 border-[#282825]">
                 <Database className="w-3.5 h-3.5 text-[#ff5636]" />
-                <span>Supabase Realtime Sync ⚡</span>
+                <span>مربوطة بقاعدة بيانات Supabase ⚡</span>
               </span>
             </div>
 
@@ -167,17 +224,27 @@ export default function LiveRoomsLobbyPage() {
               غرف البث والمذاكرة الصوتية والمرئية المباشرة
             </h1>
             <p className="text-xs sm:text-sm font-bold text-[#282825]/80 max-w-2xl leading-relaxed">
-              تفاعل مباشرة مع زملائك والمدرسين صوتياً ومرئياً مع مزامنة حقيقية عبر قاعدة بيانات Supabase.
+              تفاعل مباشرة مع زملائك والمدرسين صوتياً ومرئياً، تظهر جميع الغرف فور إنشائها لكافة الطلاب عبر Supabase.
             </p>
           </div>
 
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-6 py-3.5 text-xs font-black shadow-[3px_3px_0_#282825] hover:shadow-[5px_5px_0_#282825] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4 stroke-[3px]" />
-            <span>إنشاء غرفة جديدة</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchSupabaseRooms}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border-2 border-[#282825] bg-white text-[#282825] shadow-[2px_2px_0_#282825] hover:bg-[#bce9fa] transition-all cursor-pointer"
+              title="تحديث الغرف من Supabase"
+            >
+              <RefreshCw className={`w-5 h-5 ${isLoadingRooms ? 'animate-spin text-[#ff5636]' : ''}`} />
+            </button>
+
+            <button
+              onClick={() => setCreateModalOpen(true)}
+              className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-6 py-3.5 text-xs font-black shadow-[3px_3px_0_#282825] hover:shadow-[5px_5px_0_#282825] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4 stroke-[3px]" />
+              <span>إنشاء غرفة جديدة</span>
+            </button>
+          </div>
         </header>
 
         {/* Filter & Search Bar */}
@@ -214,7 +281,12 @@ export default function LiveRoomsLobbyPage() {
         </div>
 
         {/* Rooms Grid */}
-        {filteredRooms.length > 0 ? (
+        {isLoadingRooms ? (
+          <div className="py-16 text-center text-xs font-bold text-[#5f5f59] space-y-2">
+            <RefreshCw className="w-8 h-8 text-[#ff5636] animate-spin mx-auto" />
+            <p>جاري جلب الغرف النشطة من قاعدة بيانات Supabase...</p>
+          </div>
+        ) : filteredRooms.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredRooms.map((room) => (
               <LiveRoomCard key={room.id} room={room} />
@@ -249,7 +321,7 @@ export default function LiveRoomsLobbyPage() {
                 </span>
                 <div>
                   <h2 className="text-lg font-black text-[#282825]">إنشاء غرفة بث تفاعلية جديدة</h2>
-                  <small className="text-[11px] font-bold text-[#5f5f59]">تزامن فوري عبر Supabase Realtime</small>
+                  <small className="text-[11px] font-bold text-[#5f5f59]">تزامن فوري ومحفوظ عبر Supabase</small>
                 </div>
               </div>
               <button
@@ -325,7 +397,7 @@ export default function LiveRoomsLobbyPage() {
                   className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-6 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Check className="w-4 h-4 stroke-[3px]" />
-                  <span>{isSubmitting ? 'جاري الإنشاء...' : 'انطلق الآن 🚀'}</span>
+                  <span>{isSubmitting ? 'جاري الحفظ في Supabase...' : 'انطلق الآن 🚀'}</span>
                 </button>
               </div>
             </form>
