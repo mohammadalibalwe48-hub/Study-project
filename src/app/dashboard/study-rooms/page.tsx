@@ -71,7 +71,7 @@ export default function StudyRoomsPage() {
         setSubjects(data || []);
       } catch (err) {
         console.error('Error fetching study room subjects:', err);
-      } font-blackally {
+      } finally {
         setDbLoading(false);
       }
     }
