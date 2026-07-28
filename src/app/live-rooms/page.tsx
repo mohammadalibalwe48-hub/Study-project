@@ -4,16 +4,18 @@ import React, { useState, useEffect } from 'react';
 import SidebarLayout from '@/components/SidebarLayout';
 import { useAuth } from '@/context/AuthContext';
 import LiveRoomCard from '@/components/LiveRoomCard';
-import { INITIAL_LIVE_ROOMS, LiveRoom } from '@/data/liveRoomsData';
+import { LiveRoom } from '@/data/liveRoomsData';
 import { Radio, Plus, Search, Video, Mic, X, Check, Database, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase/client';
 
+const STORAGE_KEY = 'masar_live_rooms_store';
+
 export default function LiveRoomsLobbyPage() {
-  const { user, profile, signOut } = useAuth();
+  const { profile, signOut } = useAuth();
   const router = useRouter();
 
-  const [rooms, setRooms] = useState<LiveRoom[]>(INITIAL_LIVE_ROOMS);
+  const [rooms, setRooms] = useState<LiveRoom[]>([]);
   const [subjectsList, setSubjectsList] = useState<string[]>(['الكل', 'الفيزياء', 'الكيمياء', 'الرياضيات', 'اللغة العربية', 'اللغة الإنكليزية', 'العلوم العامة']);
   const [selectedSubject, setSelectedSubject] = useState('الكل');
   const [searchQuery, setSearchQuery] = useState('');
@@ -26,7 +28,33 @@ export default function LiveRoomsLobbyPage() {
   const [newDescription, setNewDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 1. Fetch Subjects from Supabase
+  // 1. Load Rooms from LocalStorage & Supabase
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setRooms(parsed);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  // Save to LocalStorage whenever rooms state updates
+  function updateRoomsState(updater: (prev: LiveRoom[]) => LiveRoom[]) {
+    setRooms((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+  }
+
+  // 2. Fetch Subjects from Supabase
   useEffect(() => {
     async function loadSupabaseSubjects() {
       try {
@@ -39,13 +67,13 @@ export default function LiveRoomsLobbyPage() {
           }
         }
       } catch (err) {
-        console.warn('Supabase subjects load fallback:', err);
+        console.warn('Supabase subjects query:', err);
       }
     }
     loadSupabaseSubjects();
   }, []);
 
-  // 2. Subscribe to Supabase Realtime Channel for Lobby Rooms Sync
+  // 3. Supabase Realtime Broadcast for Room Creation Sync
   useEffect(() => {
     const channel = supabase.channel('live_rooms_lobby', {
       config: { broadcast: { self: true } }
@@ -53,7 +81,7 @@ export default function LiveRoomsLobbyPage() {
 
     channel.on('broadcast', { event: 'new_room_created' }, (payload) => {
       if (payload?.payload?.room) {
-        setRooms((prev) => {
+        updateRoomsState((prev) => {
           if (prev.some((r) => r.id === payload.payload.room.id)) return prev;
           return [payload.payload.room, ...prev];
         });
@@ -88,12 +116,18 @@ export default function LiveRoomsLobbyPage() {
       activeCount: 1,
       maxCount: newIsTutorSession ? 50 : 12,
       tags: ['مباشر الان', 'Supabase Realtime'],
-      description: newDescription.trim() || 'غرفة بث ومذاكرة تفاعلية متصلة عبر قاعدة بيانات Supabase Realtime.',
+      description: newDescription.trim() || 'غرفة بث ومذاكرة تفاعلية جديدة.',
       createdAt: 'الآن',
     };
 
+    // Save individual room metadata for the active room page
     try {
-      // Broadcast via Supabase Realtime
+      localStorage.setItem(`masar_room_${roomId}`, JSON.stringify(newRoomObj));
+    } catch {
+      // Ignore
+    }
+
+    try {
       const channel = supabase.channel('live_rooms_lobby');
       await channel.send({
         type: 'broadcast',
@@ -101,9 +135,9 @@ export default function LiveRoomsLobbyPage() {
         payload: { room: newRoomObj },
       });
     } catch (err) {
-      console.warn('Realtime room broadcast info:', err);
+      console.warn('Realtime room creation broadcast:', err);
     } finally {
-      setRooms((prev) => [newRoomObj, ...prev]);
+      updateRoomsState((prev) => [newRoomObj, ...prev]);
       setIsSubmitting(false);
       setCreateModalOpen(false);
       router.push(`/live-rooms/${roomId}`);
@@ -120,7 +154,7 @@ export default function LiveRoomsLobbyPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-[#ff5636] text-white border-2 border-[#282825] shadow-[1.5px_1.5px_0_#282825]">
                 <Radio className="w-4 h-4 animate-pulse" />
-                <span>غرف البث التفاعلي المباشر 🎙️📹</span>
+                <span>غرف البث والدردشة المباشرة 🎙️📹</span>
               </span>
 
               <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-white text-[#282825] border-2 border-[#282825]">
@@ -130,10 +164,10 @@ export default function LiveRoomsLobbyPage() {
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black text-[#282825]">
-              غرف البث والمذاكرة الجماعية الصوتية والمرئية
+              غرف البث والمذاكرة الصوتية والمرئية المباشرة
             </h1>
             <p className="text-xs sm:text-sm font-bold text-[#282825]/80 max-w-2xl leading-relaxed">
-              تفاعل مباشرة مع زملائك والمدرسين صوتياً ومرئياً مع مزامنة لحظية وحقيقية عبر قنوات Supabase Realtime.
+              تفاعل مباشرة مع زملائك والمدرسين صوتياً ومرئياً مع مزامنة حقيقية عبر قاعدة بيانات Supabase.
             </p>
           </div>
 
@@ -188,15 +222,15 @@ export default function LiveRoomsLobbyPage() {
           </div>
         ) : (
           <div className="py-16 text-center rounded-3xl border-2 border-dashed border-[#282825] bg-white p-8 space-y-3">
-            <Radio className="w-10 h-10 text-[#ff5636] mx-auto opacity-50" />
-            <h3 className="text-base font-black text-[#282825]">لا توجد غرف بث متاحة حالياً بهذه المواصفات</h3>
+            <Radio className="w-12 h-12 text-[#ff5636] mx-auto opacity-50" />
+            <h3 className="text-lg font-black text-[#282825]">لا توجد غرف بث نشطة حالياً</h3>
             <p className="text-xs font-bold text-[#5f5f59]">أنشئ غرفتك الآن وستظهر لجميع الطلاب المتصلين بنفس اللحظة عبر Supabase!</p>
             <button
               onClick={() => setCreateModalOpen(true)}
-              className="app-button border-2 border-[#282825] bg-[#ffd64d] text-[#282825] px-5 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer inline-flex items-center gap-1.5 mt-2"
+              className="app-button border-2 border-[#282825] bg-[#ffd64d] text-[#282825] px-6 py-3 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer inline-flex items-center gap-2 mt-2"
             >
               <Plus className="w-4 h-4 stroke-[3px]" />
-              <span>إنشاء غرفة الآن</span>
+              <span>إنشاء أول غرفة بث الآن</span>
             </button>
           </div>
         )}
@@ -214,8 +248,8 @@ export default function LiveRoomsLobbyPage() {
                   <Video className="w-5 h-5 text-[#ff5636]" />
                 </span>
                 <div>
-                  <h2 className="text-lg font-black text-[#282825]">إنشاء غرفة بث تفاعلية مباشرة</h2>
-                  <small className="text-[11px] font-bold text-[#5f5f59]">مربوطة بقاعدة بيانات Supabase Realtime</small>
+                  <h2 className="text-lg font-black text-[#282825]">إنشاء غرفة بث تفاعلية جديدة</h2>
+                  <small className="text-[11px] font-bold text-[#5f5f59]">تزامن فوري عبر Supabase Realtime</small>
                 </div>
               </div>
               <button
@@ -234,7 +268,7 @@ export default function LiveRoomsLobbyPage() {
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="مثال: مراجعة قوانين الفيزياء والنواسات..."
+                  placeholder="مثال: مراجعة مسائل الفيزياء والنواسات..."
                   className="w-full rounded-xl border-2 border-[#282825] bg-white p-3 text-xs font-semibold placeholder-[#77776f] shadow-[2px_2px_0_#282825] focus:outline-none focus:border-[#ff5636]"
                 />
               </div>
@@ -291,7 +325,7 @@ export default function LiveRoomsLobbyPage() {
                   className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-6 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Check className="w-4 h-4 stroke-[3px]" />
-                  <span>{isSubmitting ? 'جاري الربط...' : 'انطلق الآن 🚀'}</span>
+                  <span>{isSubmitting ? 'جاري الإنشاء...' : 'انطلق الآن 🚀'}</span>
                 </button>
               </div>
             </form>

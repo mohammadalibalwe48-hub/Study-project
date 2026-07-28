@@ -19,12 +19,10 @@ import {
   Radio,
   Sparkles,
   ShieldCheck,
-  CheckCircle2,
   AlertCircle,
-  Database,
   Wifi,
 } from 'lucide-react';
-import { INITIAL_LIVE_ROOMS, LiveRoom } from '@/data/liveRoomsData';
+import { LiveRoom } from '@/data/liveRoomsData';
 import { supabase } from '@/utils/supabase/client';
 
 interface Participant {
@@ -42,19 +40,31 @@ export default function ActiveLiveRoomPage() {
   const router = useRouter();
   const { user, profile, signOut } = useAuth();
 
-  // Find room details from dataset or fallback
-  const roomData: LiveRoom = INITIAL_LIVE_ROOMS.find((r) => r.id === id) || {
-    id: id || 'custom-room',
+  // Load real room data from LocalStorage or Supabase
+  const [roomData, setRoomData] = useState<LiveRoom>({
+    id: id || 'room-live',
     title: 'غرفة البث المباشر والمذاكرة التفاعلية',
-    subject: 'الفيزياء والرياضيات',
-    hostName: profile?.full_name || 'أحمد الطالب',
-    isTutorSession: true,
-    activeCount: 5,
+    subject: 'المادة الدراسية',
+    hostName: profile?.full_name || 'طالب مسار',
+    isTutorSession: profile?.role === 'admin',
+    activeCount: 1,
     maxCount: 30,
     tags: ['بث مباشر', 'Supabase Realtime'],
-    description: 'غرفة بث ومذاكرة تفاعلية حية متصلة بقاعدة بيانات وخادومات Supabase Realtime.',
+    description: 'غرفة مذاكرة صوتية ومرئية تفاعلية حية حقيقية.',
     createdAt: 'الآن',
-  };
+  });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`masar_room_${id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.title) setRoomData(parsed);
+      }
+    } catch {
+      // Ignore
+    }
+  }, [id]);
 
   // Media States
   const [isMicOn, setIsMicOn] = useState(true);
@@ -74,42 +84,26 @@ export default function ActiveLiveRoomPage() {
   // Supabase Realtime Channel Reference
   const channelRef = useRef<any>(null);
 
-  // Live Chat State
+  // Zero Fake Data: Live Chat State starts empty
   const [chatMessages, setChatMessages] = useState<
     { id: string; sender: string; text: string; time: string; isHost?: boolean }[]
-  >([
-    {
-      id: '1',
-      sender: 'أ. عصام الحلاق',
-      text: 'أهلاً بكم يا أبطال في البث المباشر المتصل بـ Supabase! 🎙️',
-      time: '10:00 ص',
-      isHost: true,
-    },
-  ]);
+  >([]);
   const [chatInput, setChatInput] = useState('');
 
   // Whiteboard Notes State
   const [boardNotes, setBoardNotes] = useState(
-    `📌 ملاحظات الجلسة المباشرة (متزامنة لحظياً عبر Supabase Realtime):\n1. قانون النواس الثقيل: T_0 = 2\\pi \\sqrt{\\dfrac{I_{\\Delta}}{m \\cdot g \\cdot d}}\n2. انتبه لحساب العزم I_{\\Delta} بالوحدات الدولية (kg.m^2)`
+    `📌 سبورة وملاحظات الجلسة المباشرة (متزامنة لحظياً عبر Supabase Realtime):`
   );
 
-  // Participants List
+  // Zero Fake Data: Participants list starts with ONLY real connected user
   const [participants, setParticipants] = useState<Participant[]>([
     {
       id: user?.id || 'me-local',
       name: profile?.full_name || 'أنت (طالب مسار)',
-      isHost: false,
+      isHost: profile?.role === 'admin' || roomData.hostName === profile?.full_name,
       isMuted: !isMicOn,
       isVideoOn: isCamOn,
       handRaised: handRaised,
-    },
-    {
-      id: 'host-1',
-      name: roomData.hostName,
-      isHost: true,
-      isMuted: false,
-      isVideoOn: true,
-      handRaised: false,
     },
   ]);
 
@@ -125,7 +119,7 @@ export default function ActiveLiveRoomPage() {
 
     channelRef.current = channel;
 
-    // Presence Sync Handler
+    // Presence Sync Handler: Updates real connected participants
     channel.on('presence', { event: 'sync' }, () => {
       const presenceState = channel.presenceState();
       const onlineUsers: Participant[] = [];
@@ -166,10 +160,9 @@ export default function ActiveLiveRoomPage() {
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         setIsSupabaseConnected(true);
-        // Track presence
         channel.track({
           full_name: profile?.full_name || 'طالب مسار',
-          isHost: profile?.role === 'admin',
+          isHost: profile?.role === 'admin' || roomData.hostName === profile?.full_name,
           isMuted: !isMicOn,
           isVideoOn: isCamOn,
           handRaised: handRaised,
@@ -177,14 +170,14 @@ export default function ActiveLiveRoomPage() {
       }
     });
 
-    // Fetch initial chat history from Supabase if subject/messages exist
+    // Load actual messages from Supabase Database
     async function loadSupabaseRoomMessages() {
       try {
         const { data, error } = await supabase
           .from('room_messages')
           .select('id, message, created_at, users(full_name)')
           .order('created_at', { ascending: true })
-          .limit(20);
+          .limit(30);
 
         if (!error && data && data.length > 0) {
           const formatted = data.map((m: any) => ({
@@ -193,10 +186,10 @@ export default function ActiveLiveRoomPage() {
             text: m.message,
             time: new Date(m.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
           }));
-          setChatMessages((prev) => [...prev, ...formatted]);
+          setChatMessages(formatted);
         }
       } catch (err) {
-        console.warn('Supabase chat load info:', err);
+        console.warn('Supabase DB messages query:', err);
       }
     }
 
@@ -205,22 +198,22 @@ export default function ActiveLiveRoomPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id, user, profile]);
+  }, [id, user, profile, roomData.hostName]);
 
   // 2. Sync Local State Changes to Supabase Presence
   useEffect(() => {
     if (channelRef.current && isSupabaseConnected) {
       channelRef.current.track({
         full_name: profile?.full_name || 'طالب مسار',
-        isHost: profile?.role === 'admin',
+        isHost: profile?.role === 'admin' || roomData.hostName === profile?.full_name,
         isMuted: !isMicOn,
         isVideoOn: isCamOn,
         handRaised: handRaised,
       });
     }
-  }, [isMicOn, isCamOn, handRaised, isSupabaseConnected, profile]);
+  }, [isMicOn, isCamOn, handRaised, isSupabaseConnected, profile, roomData.hostName]);
 
-  // 3. WebRTC Local Camera & Microphone Access
+  // 3. WebRTC Camera & Microphone Access
   useEffect(() => {
     async function startCamera() {
       try {
@@ -232,7 +225,7 @@ export default function ActiveLiveRoomPage() {
         }
       } catch (err) {
         console.warn('Camera/Mic access info:', err);
-        setMediaError('لم يتم إتاحة الكاميرا أو الميكروفون حالياً، يمكنك المتابعة بالمحادثة والنص مباشرة.');
+        setMediaError('لم يتم تفعيل الكاميرا أو الميكروفون حالياً، يمكنك المتابعة بالمحادثة والكتابة مباشرة.');
         setIsCamOn(false);
       }
     }
@@ -296,7 +289,7 @@ export default function ActiveLiveRoomPage() {
     }
   }
 
-  // Handle Send Chat Message (Persists to Supabase & Realtime Broadcast)
+  // Send Chat Message
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -311,7 +304,7 @@ export default function ActiveLiveRoomPage() {
     setChatMessages((prev) => [...prev, newMsg]);
     setChatInput('');
 
-    // 1. Broadcast via Supabase Realtime
+    // Broadcast via Supabase Realtime
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
@@ -320,21 +313,21 @@ export default function ActiveLiveRoomPage() {
       });
     }
 
-    // 2. Persist to Supabase Database table `room_messages`
+    // Persist to Supabase Database
     try {
       if (user?.id) {
         await supabase.from('room_messages').insert({
           message: newMsg.text,
           user_id: user.id,
-          subject_id: 1, // Fallback subject ID
+          subject_id: 1,
         });
       }
     } catch (err) {
-      console.warn('Supabase DB message save info:', err);
+      console.warn('Supabase DB save info:', err);
     }
   }
 
-  // Handle Whiteboard Change (Broadcasts via Supabase Realtime)
+  // Whiteboard Change Broadcast
   function handleWhiteboardChange(val: string) {
     setBoardNotes(val);
     if (channelRef.current) {
@@ -388,13 +381,13 @@ export default function ActiveLiveRoomPage() {
           </div>
         )}
 
-        {/* Main Grid: Video Gallery (Left) & Sidebar Chat/Notes (Right) */}
+        {/* Main Grid: Video Gallery & Sidebar Chat/Notes */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* VIDEO GALLERY (2 Columns) */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* Screen Share View or Featured Video */}
+            {/* Screen Share View or Camera Feed */}
             {isScreenSharing ? (
               <div className="relative rounded-3xl border-2 border-[#282825] bg-black overflow-hidden shadow-[6px_6px_0_#282825] aspect-video flex items-center justify-center">
                 <video ref={screenVideoRef} autoPlay playsInline className="w-full h-full object-contain" />
@@ -405,7 +398,7 @@ export default function ActiveLiveRoomPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 
-                {/* Local User Camera Feed */}
+                {/* Local User Video Feed */}
                 <div className="relative rounded-3xl border-2 border-[#282825] bg-[#282825] overflow-hidden shadow-[4px_4px_0_#282825] aspect-video flex items-center justify-center">
                   <video
                     ref={localVideoRef}
@@ -442,15 +435,15 @@ export default function ActiveLiveRoomPage() {
                   </div>
                 </div>
 
-                {/* Host Featured Video Feed */}
+                {/* Host Video Stream / Placeholder */}
                 <div className="relative rounded-3xl border-2 border-[#282825] bg-[#1e293b] overflow-hidden shadow-[4px_4px_0_#282825] aspect-video flex items-center justify-center">
                   <div className="text-center text-white space-y-2">
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ffd64d] text-[#282825] mx-auto text-xl font-black border-2 border-[#282825]">
                       {roomData.hostName.charAt(0)}
                     </div>
-                    <span className="text-xs font-black block text-[#ffd64d]">{roomData.hostName} (المضيف)</span>
+                    <span className="text-xs font-black block text-[#ffd64d]">{roomData.hostName}</span>
                     <span className="text-[10px] font-bold bg-[#cce6b4] text-[#15803d] px-2 py-0.5 rounded-md border border-[#282825] inline-block">
-                      🎙️ يتحدث الآن...
+                      🎙️ متصل في البث
                     </span>
                   </div>
 
@@ -540,7 +533,7 @@ export default function ActiveLiveRoomPage() {
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>المشاركون</span>
+                <span>المشاركون ({participants.length})</span>
               </button>
 
               <button
@@ -558,19 +551,25 @@ export default function ActiveLiveRoomPage() {
             {activeTab === 'chat' && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden">
                 <div className="flex-1 overflow-y-auto space-y-3 p-1">
-                  {chatMessages.map((msg) => (
-                    <div key={msg.id} className="space-y-1 text-xs font-semibold">
-                      <div className="flex items-center justify-between text-[10px] text-[#77776f]">
-                        <span className="font-black text-[#282825]">{msg.sender}</span>
-                        <span>{msg.time}</span>
+                  {chatMessages.length > 0 ? (
+                    chatMessages.map((msg) => (
+                      <div key={msg.id} className="space-y-1 text-xs font-semibold">
+                        <div className="flex items-center justify-between text-[10px] text-[#77776f]">
+                          <span className="font-black text-[#282825]">{msg.sender}</span>
+                          <span>{msg.time}</span>
+                        </div>
+                        <div className={`p-3 rounded-xl border border-[#282825] leading-relaxed ${
+                          msg.isHost ? 'bg-[#ffd64d]/40 text-[#282825] font-bold' : 'bg-[#fafaf7] text-[#282825]'
+                        }`}>
+                          {msg.text}
+                        </div>
                       </div>
-                      <div className={`p-3 rounded-xl border border-[#282825] leading-relaxed ${
-                        msg.isHost ? 'bg-[#ffd64d]/40 text-[#282825] font-bold' : 'bg-[#fafaf7] text-[#282825]'
-                      }`}>
-                        {msg.text}
-                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-10 text-xs font-bold text-[#77776f]">
+                      لا توجد رسائل حالياً. كن الأول واكتب رسالة للبث 💬
                     </div>
-                  ))}
+                  )}
                 </div>
 
                 <form onSubmit={handleSendMessage} className="pt-3 border-t-2 border-[#282825]/10 flex gap-2">
@@ -630,7 +629,7 @@ export default function ActiveLiveRoomPage() {
                   rows={15}
                   value={boardNotes}
                   onChange={(e) => handleWhiteboardChange(e.target.value)}
-                  placeholder="اكتب قوانين وملاحظات الجلسة وتتزامن مع الجميع مباشرة..."
+                  placeholder="اكتب ملاحظات الجلسة وتتزامن مع الجميع مباشرة..."
                   className="w-full flex-1 rounded-2xl border-2 border-[#282825] bg-[#bce9fa]/20 p-4 text-xs font-semibold text-[#282825] leading-relaxed shadow-[2.5px_2.5px_0_#282825] focus:outline-none"
                 />
               </div>
