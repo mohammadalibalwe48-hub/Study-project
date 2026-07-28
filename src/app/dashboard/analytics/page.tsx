@@ -9,7 +9,7 @@ import SidebarLayout from '@/components/SidebarLayout';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { getUserXPAndStreak } from '@/utils/xpHelper';
 import { FlameIcon, LightningIcon } from '@/components/icons/SvgIcons';
-import { Trophy, Target } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Award, ArrowLeft } from 'lucide-react';
 
 interface QuizResult {
   id: number;
@@ -135,47 +135,47 @@ export default function AnalyticsPage() {
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-8 overflow-y-auto text-right border border-white/15">
+      <main className="mx-auto w-full max-w-[1180px] space-y-8 text-right bg-dot-pattern py-4" dir="rtl">
         
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 border-b border-white/10 pb-6">
+        <div className="flex flex-col gap-4 border-b-2 border-[#282825] pb-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <span className="text-xs font-medium px-4 py-1.5 liquid-glass rounded-full text-cyan-300 border border-cyan-400/20 uppercase inline-block">
-              التحليل التكيّفي الذكي
+            <span className="app-chip bg-[#bce9fa] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
+              <TrendingUp className="h-4 w-4 text-[#ff5636]" /> التحليل التكيّفي الذكي
             </span>
-            <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground mt-3">
+            <h1 className="mt-2 text-3xl font-black sm:text-5xl text-[#282825]">
               تحليل المستوى والتحصيل
             </h1>
-            <p className="text-muted-foreground text-sm max-w-xl leading-relaxed">
+            <p className="text-[#5f5f59] text-sm max-w-xl leading-relaxed font-semibold mt-1">
               تقارير بيانية تفصيلية لكشف نقاط القوة ومكامن الضعف ومعدل الاستجابة الامتحانية.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="liquid-glass-glow rounded-full px-4 py-2 text-xs text-foreground font-medium flex items-center gap-2 border border-amber-400/30">
-              <LightningIcon className="w-4 h-4 text-amber-400" /> {xpData?.xp || 0} XP
+            <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black text-xs">
+              <LightningIcon className="w-4 h-4 text-[#ff5636]" /> {xpData?.xp || 0} XP
             </span>
-            <span className="liquid-glass-glow rounded-full px-4 py-2 text-xs text-foreground font-medium flex items-center gap-2 border border-rose-400/30">
-              <FlameIcon className="w-4 h-4 text-rose-400" /> {xpData?.streak_days || 0} أيام
+            <span className="app-chip bg-[#dcbcff] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black text-xs">
+              <FlameIcon className="w-4 h-4 text-[#ff5636]" /> {xpData?.streak_days || 0} أيام
             </span>
           </div>
         </div>
 
         {/* Global Performance Overview Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-2">
-            <span className="text-xs text-muted-foreground">معدل التحصيل العام</span>
-            <div className="text-4xl font-display text-emerald-400 pt-2">{overallAveragePercent}%</div>
+          <div className="rounded-2xl border-2 border-[#282825] bg-[#cce6b4] p-6 shadow-[5px_5px_0_#282825] space-y-2">
+            <span className="text-xs font-black text-[#282825]">معدل التحصيل العام</span>
+            <div className="text-5xl font-black text-[#282825] pt-1">{overallAveragePercent}%</div>
           </div>
 
-          <div className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-2">
-            <span className="text-xs text-muted-foreground">إجمالي الاختبارات المحلولة</span>
-            <div className="text-4xl font-display text-cyan-300 pt-2">{totalCompletedQuizzes} اختبار</div>
+          <div className="rounded-2xl border-2 border-[#282825] bg-[#bce9fa] p-6 shadow-[5px_5px_0_#282825] space-y-2">
+            <span className="text-xs font-black text-[#282825]">إجمالي الاختبارات المحلولة</span>
+            <div className="text-4xl font-black text-[#282825] pt-1">{totalCompletedQuizzes} اختبارات</div>
           </div>
 
-          <div className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-2">
-            <span className="text-xs text-muted-foreground">المواد المغطاة</span>
-            <div className="text-4xl font-display text-amber-400 pt-2">{subjectPerformances.length} مادة</div>
+          <div className="rounded-2xl border-2 border-[#282825] bg-[#ffdc72] p-6 shadow-[5px_5px_0_#282825] space-y-2">
+            <span className="text-xs font-black text-[#282825]">المواد المغطاة</span>
+            <div className="text-4xl font-black text-[#282825] pt-1">{subjectPerformances.length} مواد</div>
           </div>
         </div>
 
@@ -183,21 +183,25 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           
           {/* Strengths */}
-          <div className="liquid-glass rounded-3xl p-6 border border-emerald-400/30 space-y-4">
-            <h3 className="text-2xl font-display text-foreground border-b border-white/10 pb-3 flex items-center gap-2">
-              نقاط القوة والتفوق <Trophy className="w-6 h-6 text-amber-400" />
+          <div className="rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] space-y-4">
+            <h3 className="text-2xl font-black text-[#282825] border-b-2 border-[#282825]/10 pb-3 flex items-center justify-between">
+              <span>نقاط القوة والتفوق</span>
+              <Trophy className="w-6 h-6 text-[#ff5636]" />
             </h3>
+            
             {strengths.length === 0 ? (
-              <p className="text-xs text-muted-foreground">قم بإنهاء المزيد من الاختبارات بنسبة أعلى من 70% لإظهار المواد المتميزة.</p>
+              <p className="text-xs font-bold text-[#5f5f59]">قم بإنهاء المزيد من الاختبارات بنسبة أعلى من 70% لإظهار المواد المتميزة.</p>
             ) : (
               <div className="space-y-3">
                 {strengths.map((sp) => (
-                  <div key={sp.subjectId} className="liquid-glass rounded-2xl p-4 border border-white/10 flex justify-between items-center text-xs">
+                  <div key={sp.subjectId} className="rounded-xl border-2 border-[#282825] bg-[#cce6b4]/30 p-4 flex justify-between items-center text-xs shadow-[2px_2px_0_#282825]">
                     <div>
-                      <h4 className="font-medium text-foreground text-sm">{sp.subjectName}</h4>
-                      <span className="text-[11px] text-muted-foreground">{sp.attempts} محاولات</span>
+                      <h4 className="font-black text-[#282825] text-sm">{sp.subjectName}</h4>
+                      <span className="text-[11px] font-bold text-[#5f5f59]">{sp.attempts} محاولات</span>
                     </div>
-                    <span className="text-emerald-400 font-bold text-base">%{sp.averageScorePercent}</span>
+                    <span className="text-[#15803d] font-black text-lg bg-white border border-[#282825] px-3 py-1 rounded-lg shadow-[1px_1px_0_#282825]">
+                      %{sp.averageScorePercent}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -205,27 +209,32 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Weaknesses */}
-          <div className="liquid-glass rounded-3xl p-6 border border-rose-400/30 space-y-4">
-            <h3 className="text-2xl font-display text-foreground border-b border-white/10 pb-3 flex items-center gap-2">
-              مواد بحاجة لمراجعة وإعادة تدريب <Target className="w-6 h-6 text-rose-400" />
+          <div className="rounded-2xl border-2 border-[#282825] bg-[#ff5636]/10 p-6 shadow-[5px_5px_0_#282825] space-y-4">
+            <h3 className="text-2xl font-black text-[#282825] border-b-2 border-[#282825]/10 pb-3 flex items-center justify-between">
+              <span>مواد بحاجة لمراجعة</span>
+              <Target className="w-6 h-6 text-[#ff5636]" />
             </h3>
+            
             {weakSpots.length === 0 ? (
-              <p className="text-xs text-muted-foreground">لا توجد مواد ضعيفة حالياً! أداءك ممتاز جداً.</p>
+              <p className="text-xs font-bold text-[#5f5f59]">لا توجد مواد ضعيفة حالياً! أداؤك ممتاز جداً.</p>
             ) : (
               <div className="space-y-3">
                 {weakSpots.map((sp) => (
-                  <div key={sp.subjectId} className="liquid-glass rounded-2xl p-4 border border-white/10 flex justify-between items-center text-xs">
+                  <div key={sp.subjectId} className="rounded-xl border-2 border-[#282825] bg-white p-4 flex justify-between items-center text-xs shadow-[2px_2px_0_#282825]">
                     <div>
-                      <h4 className="font-medium text-foreground text-sm">{sp.subjectName}</h4>
-                      <span className="text-[11px] text-muted-foreground">{sp.attempts} محاولات</span>
+                      <h4 className="font-black text-[#282825] text-sm">{sp.subjectName}</h4>
+                      <span className="text-[11px] font-bold text-[#5f5f59]">{sp.attempts} محاولات</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-rose-400 font-bold text-base">%{sp.averageScorePercent}</span>
+                      <span className="text-[#b91c1c] font-black text-lg bg-[#ff5636]/10 border border-[#282825] px-3 py-1 rounded-lg">
+                        %{sp.averageScorePercent}
+                      </span>
                       <Link
                         href={`/subjects/${sp.subjectId}`}
-                        className="liquid-glass-glow rounded-full px-3 py-1 text-[11px] text-foreground hover:scale-105 border border-cyan-400/30"
+                        className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-3.5 py-1.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3px_3px_0_#282825] transition-all flex items-center gap-1"
                       >
-                        تدرب الآن ←
+                        <span>تدرب الآن</span>
+                        <ArrowLeft className="h-3 w-3" />
                       </Link>
                     </div>
                   </div>
@@ -236,7 +245,7 @@ export default function AnalyticsPage() {
 
         </div>
 
-      </div>
+      </main>
     </SidebarLayout>
   );
 }

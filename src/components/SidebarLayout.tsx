@@ -12,6 +12,7 @@ import {
   CalendarDays,
   ChartNoAxesColumnIncreasing,
   CircleHelp,
+  Clock,
   FileCheck2,
   FolderOpen,
   GraduationCap,
@@ -27,9 +28,13 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Trophy,
+  UserCheck,
   UserRound,
   X,
+  Zap,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 type NavigationItem = {
   label: string;
@@ -60,7 +65,7 @@ function NavigationLinks({
   const itemIsActive = (href: string) => href === '/dashboard' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className={mobile ? 'grid gap-2' : 'flex flex-1 flex-col items-center gap-2 py-3'} aria-label="التنقل الرئيسي">
+    <nav className={mobile ? 'grid gap-2' : 'flex flex-1 flex-col items-center gap-2 py-3 overflow-y-auto max-h-[calc(100vh-220px)] w-full px-1 scrollbar-none'} aria-label="التنقل الرئيسي">
       {items.map((item) => {
         const Icon = item.icon;
         const active = itemIsActive(item.href);
@@ -74,7 +79,7 @@ function NavigationLinks({
             className={
               mobile
                 ? `flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-bold transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-sm' : 'border-transparent bg-[#f1f0eb] text-[#171714] hover:bg-[#e4e2d9]'}`
-                : `group relative flex h-11 w-11 items-center justify-center rounded-xl border transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md' : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'}`
+                : `group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md' : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'}`
             }
           >
             <Icon className="h-[19px] w-[19px]" strokeWidth={2} />
@@ -99,12 +104,19 @@ const navigation: NavigationItem[] = [
   { label: 'التحليلات', href: '/dashboard/analytics', icon: ChartNoAxesColumnIncreasing },
   { label: 'البطاقات', href: '/dashboard/flashcards', icon: Grid2X2 },
   { label: 'المحفوظات', href: '/dashboard/bookmarks', icon: Bookmark },
+  { label: 'غرف التركيز', href: '/dashboard/study-rooms', icon: Clock },
+  { label: 'المدرسون', href: '/mentors', icon: UserCheck },
   { label: 'المكتبة', href: '/library', icon: Library },
   { label: 'المجتمع', href: '/forum', icon: MessageCircle },
+  { label: 'الصدارة والأوائل', href: '/leaderboard', icon: Trophy },
+  { label: 'الملف الشخصي', href: '/profile', icon: UserRound },
+  { label: 'الدعم الفني', href: '/support', icon: CircleHelp },
+  { label: 'باقات الاشتراك', href: '/pricing', icon: Sparkles },
   { label: 'الإدارة', href: '/admin', icon: ShieldCheck, adminOnly: true },
 ];
 
 export default function SidebarLayout({ children, role, signOut }: SidebarLayoutProps) {
+  const { profile } = useAuth();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -125,6 +137,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   }, [messages, isTyping]);
 
   const visibleNavigation = navigation.filter((item) => !item.adminOnly || role === 'admin');
+
   async function askAI(event: FormEvent) {
     event.preventDefault();
     const prompt = query.trim().slice(0, 500);
@@ -161,7 +174,9 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
           <Link href="/dashboard" className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-[#282825] bg-white shadow-sm" aria-label="مسار - الرئيسية">
             <Image src="/images/logo.png" alt="" fill sizes="44px" className="object-contain p-1" priority />
           </Link>
+
           <NavigationLinks items={visibleNavigation} pathname={pathname} />
+
           <div className="mt-auto flex flex-col items-center gap-2">
             <button onClick={() => setAiOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#deddd7] bg-white text-[#171714] hover:border-[#ff5636] hover:bg-[#ffd64d]" title="المساعد الذكي">
               <Headphones className="h-[19px] w-[19px]" />
@@ -187,8 +202,13 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </label>
             <button className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#9d9c95] bg-white" aria-label="الإشعارات"><Bell className="h-[18px] w-[18px]" /><span className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full border border-white bg-[#ff5636]" /></button>
             <Link href="/profile" className="flex items-center gap-2 rounded-full py-1 pr-1 pl-2 hover:bg-[#efeee8]">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#282825] bg-[#dcbcff] text-sm font-extrabold">م</span>
-              <span className="hidden text-right md:block"><strong className="block text-xs">طالب مسار</strong><small className="block text-[10px] text-[#77776f]">البكالوريا السورية</small></span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#282825] bg-[#dcbcff] text-sm font-extrabold">
+                {profile?.full_name?.charAt(0) || 'م'}
+              </span>
+              <span className="hidden text-right md:block">
+                <strong className="block text-xs">{profile?.full_name || 'طالب مسار'}</strong>
+                <small className="block text-[10px] text-[#77776f]">البكالوريا السورية</small>
+              </span>
             </Link>
           </header>
 
@@ -222,23 +242,25 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
               <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#282825] bg-[#282825] text-white"><Bot className="h-6 w-6" /></span><span><strong className="block">رفيق مسار الذكي</strong><small>متصل ومستعد للمساعدة</small></span></div>
               <button onClick={() => setAiOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#282825] bg-white" aria-label="إغلاق"><X className="h-5 w-5" /></button>
             </header>
-            <div className="flex-1 space-y-3 overflow-y-auto p-5">
+            <div className="flex-1 space-y-4 overflow-y-auto p-5 bg-dot-pattern-dense">
               {messages.map((message, index) => (
-                <div key={index} className={`max-w-[88%] rounded-2xl border border-[#282825] p-4 text-sm leading-7 ${message.sender === 'user' ? 'mr-auto bg-[#dcbcff]' : 'ml-auto bg-white'}`}>
-                  <span className="mb-1 flex items-center gap-1.5 text-[10px] font-extrabold text-[#6e6e67]">{message.sender === 'ai' ? <><Sparkles className="h-3 w-3" /> رفيق مسار</> : <><UserRound className="h-3 w-3" /> أنت</>}</span>
-                  {message.text}
+                <div key={index} className={`max-w-[88%] rounded-2xl border-2 border-[#282825] p-4 text-sm leading-7 transition-transform hover:scale-[1.01] ${message.sender === 'user' ? 'mr-auto bg-[#dcbcff] shadow-[3px_3px_0_#282825]' : 'ml-auto bg-white shadow-[3px_3px_0_#282825]'}`}>
+                  <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black text-[#282825] border-b border-[#282825]/10 pb-1">{message.sender === 'ai' ? <><Sparkles className="h-3 w-3 text-[#ff5636]" /> رفيق مسار الذكي</> : <><UserRound className="h-3 w-3 text-[#7c3aed]" /> أنت</>}</span>
+                  <div className="font-semibold text-[#282825]">{message.text}</div>
                 </div>
               ))}
-              {isTyping && <div className="ml-auto w-fit rounded-2xl border border-[#282825] bg-white px-4 py-3 text-xs font-bold">يفكر في الإجابة...</div>}
+              {isTyping && <div className="ml-auto w-fit rounded-2xl border-2 border-[#282825] bg-white px-5 py-3 text-xs font-black shadow-[3px_3px_0_#282825] animate-pulse">يفكر في الإجابة... 🤔</div>}
               <div ref={chatEndRef} />
             </div>
-            <div className="border-t border-[#d6d4cd] p-4">
+            <div className="border-t-2 border-[#282825] bg-[#f5f4ee] p-4">
               <div className="mb-3 flex flex-wrap gap-2">
-                {['اشرح لي هذا الدرس', 'ضع خطة مراجعة', 'اختبرني بسؤال'].map((suggestion) => <button key={suggestion} onClick={() => setQuery(suggestion)} className="rounded-full border border-[#9d9c95] bg-white px-3 py-1.5 text-[11px] font-bold hover:border-[#282825]">{suggestion}</button>)}
+                {['اشرح لي هذا الدرس 📖', 'ضع خطة مراجعة 🗓️', 'اختبرني بسؤال 🎯'].map((suggestion) => <button key={suggestion} onClick={() => setQuery(suggestion.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, "").trim())} className="rounded-full border-2 border-[#282825] bg-white px-3 py-1.5 text-[11.5px] font-black text-[#282825] transition-all hover:bg-[#ffd64d] hover:-translate-y-0.5 shadow-[1.5px_1.5px_0_#282825] active:translate-y-0 active:shadow-none">{suggestion}</button>)}
               </div>
               <form onSubmit={askAI} className="flex gap-2">
-                <input value={query} onChange={(event) => setQuery(event.target.value)} maxLength={500} className="app-input min-w-0 flex-1 text-sm" placeholder="اكتب سؤالك هنا..." />
-                <button disabled={!query.trim() || isTyping} className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl border border-[#282825] bg-[#ff5636] text-white" aria-label="إرسال"><Send className="h-5 w-5" /></button>
+                <input value={query} onChange={(event) => setQuery(event.target.value)} maxLength={500} className="app-input min-w-0 flex-1 text-sm border-2 border-[#282825] shadow-[2px_2px_0_#282825] focus:shadow-[4px_4px_0_#282825] focus:border-[#ff5636]" placeholder="اكتب سؤالك هنا..." />
+                <button type="submit" disabled={isTyping} className="app-button border-2 border-[#282825] bg-[#ff5636] px-5 py-2.5 text-xs font-black text-white shadow-[2px_2px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all">
+                  إرسال
+                </button>
               </form>
             </div>
           </section>

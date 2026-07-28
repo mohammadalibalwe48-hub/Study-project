@@ -9,6 +9,7 @@ import SidebarLayout from '@/components/SidebarLayout';
 import { ChatIcon } from '@/components/icons/SvgIcons';
 import { ListSkeleton } from '@/components/SkeletonLoader';
 import { awardXP, updateStreak, checkAndUnlockBadges } from '@/utils/xpHelper';
+import { MessageSquare, Plus, Sparkles, UserRound, BookOpen, Send } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -133,130 +134,139 @@ export default function ForumPage() {
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 h-full w-full">
+      <main className="mx-auto w-full max-w-[1180px] space-y-8 text-right bg-dot-pattern py-4">
+        
+        {/* Top Header & Action */}
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between border-b-2 border-[#282825] pb-6">
+          <div className="space-y-3">
+            <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
+              <MessageSquare className="h-4 w-4 text-[#ff5636]" /> مجتمع التبادل والأسئلة
+            </span>
+            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl text-[#282825]">
+              المنتدى التعليمي والمناقشات
+            </h1>
+            <p className="text-[#5f5f59] text-sm max-w-xl leading-relaxed font-semibold">
+              اطرح أسئلتك حول المنهاج، تبادل الشروحات مع زملائك، واحصل على إجابات واضحة من مجتمع مسار.
+            </p>
+          </div>
 
-        {/* Central Content Area */}
-        <section className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-6 overflow-y-auto text-right border border-white/15">
-          <div className="flex items-center justify-between w-full border-b border-white/10 pb-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Link href="/dashboard" className="hover:text-foreground transition-colors">
-                لوحة التحكم
-              </Link>
-              <span>/</span>
-              <span className="text-foreground font-medium">المنتدى التعليمي</span>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="app-button border-2 border-[#282825] bg-[#ff5636] text-white shadow-[3.5px_3.5px_0_#282825] hover:shadow-[5px_5px_0_#282825] hover:-translate-y-0.5 transition-all text-xs font-black px-6 py-3 flex items-center gap-2 shrink-0"
+          >
+            <span>{showForm ? 'إغلاق النموذج' : 'طرح سؤال جديد'}</span>
+            <Plus className="h-4 w-4 stroke-[3px]" />
+          </button>
+        </div>
+
+        {/* Ask Question Form */}
+        {showForm && (
+          <form onSubmit={handleSubmitQuestion} className="rounded-2xl border-2 border-[#282825] bg-white p-6 sm:p-8 shadow-[6px_6px_0_#282825] space-y-6 bg-dot-pattern-dense">
+            <div className="border-b-2 border-[#282825]/10 pb-4 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-[#282825] bg-[#ffd64d] shadow-[2px_2px_0_#282825]">
+                <ChatIcon className="w-5 h-5 text-[#282825]" />
+              </span>
+              <h3 className="font-black text-xl text-[#282825]">
+                اطرح سؤالك الدراسي للمناقشة:
+              </h3>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-[#282825]">المادة المرتبطة</label>
+              <select
+                value={subjectId}
+                onChange={(e) => setSubjectId(Number(e.target.value))}
+                className="w-full rounded-xl border-2 border-[#282825] bg-white p-3.5 text-[#282825] text-sm font-bold shadow-[2px_2px_0_#282825] focus:outline-none focus:border-[#ff5636]"
+              >
+                {subjects.map((sub) => (
+                  <option key={sub.id} value={sub.id} className="bg-white text-[#282825]">
+                    {sub.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-[#282825]">عنوان السؤال</label>
+              <input
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="مثال: استفسار حول تطبيقات الاشتقاق في الرياضيات"
+                className="w-full rounded-xl border-2 border-[#282825] bg-white p-3.5 text-[#282825] text-sm font-semibold placeholder-[#77776f] shadow-[2px_2px_0_#282825] focus:outline-none focus:border-[#ff5636]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-[#282825]">تفاصيل السؤال وصيغته</label>
+              <textarea
+                rows={5}
+                required
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="اكتب تفاصيل سؤالك هنا..."
+                className="w-full rounded-xl border-2 border-[#282825] bg-white p-3.5 text-[#282825] text-sm font-semibold placeholder-[#77776f] shadow-[2px_2px_0_#282825] focus:outline-none focus:border-[#ff5636]"
+              ></textarea>
             </div>
 
             <button
-              onClick={() => setShowForm(!showForm)}
-              className="liquid-glass-glow rounded-full px-6 py-2.5 text-xs text-foreground font-medium hover:scale-105 transition-transform border border-cyan-400/40"
+              type="submit"
+              disabled={actionLoading}
+              className="app-button w-full border-2 border-[#282825] bg-[#ff5636] text-white py-4 text-sm font-black shadow-[4px_4px_0_#282825] hover:shadow-[6px_6px_0_#282825] hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              {showForm ? 'إغلاق النموذج' : 'طرح سؤال جديد +'}
+              <span>{actionLoading ? 'جاري النشر...' : 'نشر السؤال للمناقشة (+15 XP)'}</span>
+              <Send className="h-4 w-4" />
             </button>
+          </form>
+        )}
+
+        {/* Posts list */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black text-[#282825]">المناقشات والأسئلة الحالية</h2>
+            <span className="app-chip bg-[#bce9fa] border border-[#282825] text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
+              {posts.length} سؤال مطروح
+            </span>
           </div>
 
-          <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground">
-            المنتدى التعليمي والمناقشات
-          </h1>
-
-          {/* Ask Question Form */}
-          {showForm && (
-            <form onSubmit={handleSubmitQuestion} className="liquid-glass rounded-3xl p-8 border border-white/20 space-y-6 animate-scale-in">
-              <h4 className="font-display text-2xl text-foreground border-b border-white/10 pb-4 flex items-center gap-3">
-                <span className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
-                  <ChatIcon className="w-5 h-5" />
-                </span>
-                اطرح سؤالك الدراسي للمناقشة:
-              </h4>
-
-              <div className="space-y-2">
-                <label className="block text-xs text-muted-foreground font-medium">المادة المرتبطة</label>
-                <select
-                  value={subjectId}
-                  onChange={(e) => setSubjectId(Number(e.target.value))}
-                  className="w-full liquid-glass rounded-2xl p-4 text-foreground text-sm font-medium focus:outline-none focus:border-cyan-400/40"
+          {posts.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-[#282825] bg-white p-12 text-center text-[#5f5f59] text-sm font-black shadow-[4px_4px_0_#282825]">
+              لا توجد أسئلة أو نقاشات مطروحة بعد. كن أول من يطرح سؤالاً!
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {posts.map((post) => (
+                <Link
+                  key={post.id}
+                  href={`/forum/${post.id}`}
+                  className="block rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[4px_4px_0_#282825] hover:shadow-[6px_6px_0_#282825] hover:-translate-y-0.5 transition-all group text-right cursor-pointer"
                 >
-                  {subjects.map((sub) => (
-                    <option key={sub.id} value={sub.id} className="bg-[#001420] text-foreground">
-                      {sub.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs text-muted-foreground font-medium">عنوان السؤال</label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="مثال: استفسار حول تطبيقات الاشتقاق في الرياضيات"
-                  className="w-full liquid-glass rounded-2xl p-4 text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:border-cyan-400/40"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs text-muted-foreground font-medium">تفاصيل السؤال وصيغته</label>
-                <textarea
-                  rows={5}
-                  required
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="اكتب تفاصيل سؤالك هنا..."
-                  className="w-full liquid-glass rounded-2xl p-4 text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:border-cyan-400/40"
-                ></textarea>
-              </div>
-
-              <button
-                type="submit"
-                disabled={actionLoading}
-                className="liquid-glass-glow w-full rounded-full py-4 text-sm font-medium text-foreground hover:scale-[1.02] transition-transform border border-cyan-400/40 cursor-pointer"
-              >
-                {actionLoading ? 'جاري النشر...' : 'نشر السؤال للمناقشة'}
-              </button>
-            </form>
-          )}
-
-          {/* Posts list */}
-          <div className="space-y-6 pt-4">
-            <h3 className="text-3xl font-display font-normal text-foreground">المناقشات والأسئلة الحالية</h3>
-
-            {posts.length === 0 ? (
-              <div className="liquid-glass rounded-3xl p-12 text-center text-muted-foreground text-sm border border-white/10">
-                لا توجد أسئلة أو نقاشات مطروحة بعد. كن أول من يطرح سؤالاً!
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {posts.map((post) => (
-                  <Link
-                    key={post.id}
-                    href={`/forum/${post.id}`}
-                    className="block liquid-glass-glow rounded-3xl p-6 border border-white/15 hover:scale-[1.01] transition-transform group text-right cursor-pointer"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3 border-b border-white/10 pb-3">
-                        <span className="text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3 py-0.5 rounded-full">
-                          {post.subjects?.name}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          بواسطة: {post.users?.full_name}
-                        </span>
-                      </div>
-                      <h4 className="font-display font-normal text-foreground text-2xl group-hover:text-cyan-200 transition-colors">
-                        {post.title}
-                      </h4>
-                      <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2">
-                        {post.content}
-                      </p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-[#282825]/10 pb-3">
+                      <span className="app-chip bg-[#ffd64d] border border-[#282825] px-3 py-0.5 text-[11px] font-black shadow-[1.5px_1.5px_0_#282825]">
+                        {post.subjects?.name}
+                      </span>
+                      <span className="text-xs font-black text-[#5f5f59] flex items-center gap-1.5 bg-[#f4f3ee] border border-[#282825]/20 px-3 py-1 rounded-lg">
+                        <UserRound className="h-3.5 w-3.5 text-[#ff5636]" />
+                        <span>بواسطة: {post.users?.full_name || 'طالب مسار'}</span>
+                      </span>
                     </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-
-      </div>
+                    
+                    <h3 className="font-black text-2xl text-[#282825] group-hover:text-[#ff5636] transition-colors leading-snug">
+                      {post.title}
+                    </h3>
+                    
+                    <p className="text-[#5f5f59] text-xs font-semibold leading-relaxed line-clamp-2">
+                      {post.content}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
     </SidebarLayout>
   );
 }

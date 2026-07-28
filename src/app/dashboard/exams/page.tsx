@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import SidebarLayout from '@/components/SidebarLayout';
 import FormulaRenderer, { MathText } from '@/components/FormulaRenderer';
 import { useAuth } from '@/context/AuthContext';
-import { Check, Bookmark, Landmark, FlaskConical, BookOpen } from 'lucide-react';
+import { Check, Bookmark, Landmark, FlaskConical, BookOpen, Clock, ArrowLeft, RotateCcw, AlertTriangle, Sparkles } from 'lucide-react';
+import AiRubricModal from '@/components/AiRubricModal';
 import {
   MINISTRY_EXAMS,
   OPTION_LETTERS,
@@ -31,6 +32,7 @@ export default function MinistryExamsPage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [phase, setPhase] = useState<Phase>('catalog');
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  const [selectedRubricQuestion, setSelectedRubricQuestion] = useState<{ question: any; userAnswerIndex?: number } | null>(null);
 
   useEffect(() => {
     if (phase !== 'running') return;
@@ -151,57 +153,58 @@ export default function MinistryExamsPage() {
     };
   }, [activeExam, answers]);
 
+  /* REVIEW PHASE SCREEN */
   if (phase === 'review' && activeExam) {
     return (
       <SidebarLayout role={profile?.role} signOut={signOut}>
-        <div className="w-full space-y-6 p-4 sm:p-6 lg:p-8 text-right" dir="rtl">
-          <header className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto w-full max-w-[1180px] space-y-6 text-right bg-dot-pattern py-4" dir="rtl">
+          <header className="flex flex-col gap-4 border-b-2 border-[#282825] pb-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3 py-1 rounded-full inline-block">
-                تقرير نتيجة الامتحان
+              <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
+                تقرير نتيجة الامتحان الوزاري
               </span>
-              <h1 className="text-3xl font-display font-normal text-foreground mt-2">{activeExam.title}</h1>
+              <h1 className="text-3xl font-black text-[#282825] mt-2 sm:text-4xl">{activeExam.title}</h1>
             </div>
             <button
               onClick={exitToCatalog}
-              className="liquid-glass rounded-full px-6 py-2 text-xs text-foreground hover:scale-105 transition-transform"
+              className="app-button border-2 border-[#282825] bg-white text-[#282825] shadow-[3px_3px_0_#282825] hover:bg-[#282825] hover:text-white transition-all text-xs font-black px-6 py-2.5"
             >
               العودة للنماذج الوزارية ←
             </button>
           </header>
 
-          <section className="liquid-glass-glow rounded-3xl p-6 border border-white/15">
+          <section className="rounded-2xl border-2 border-[#282825] bg-[#cce6b4] p-6 sm:p-8 shadow-[6px_6px_0_#282825]">
             <div className="grid gap-6 md:grid-cols-[minmax(0,320px)_1fr] items-center">
-              <div className="liquid-glass rounded-2xl p-6 border border-white/10 text-center space-y-2">
-                <span className="text-xs text-muted-foreground">النتيجة النهائية</span>
-                <div className="text-5xl font-display text-emerald-400">
+              <div className="rounded-2xl border-2 border-[#282825] bg-white p-6 text-center space-y-2 shadow-[4px_4px_0_#282825]">
+                <span className="text-xs font-black text-[#5f5f59]">النتيجة النهائية</span>
+                <div className="text-5xl font-black text-[#282825]">
                   {score.percent}%
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs font-bold text-[#5f5f59]">
                   {score.value} / {score.total} درجة
                 </p>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
-                <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-xs text-muted-foreground">إجابات صحيحة</p>
-                  <p className="text-2xl font-display text-emerald-400 mt-1">{score.correct}</p>
+                <div className="rounded-xl border-2 border-[#282825] bg-white p-4 text-center shadow-[3px_3px_0_#282825]">
+                  <p className="text-xs font-black text-[#5f5f59]">إجابات صحيحة</p>
+                  <p className="text-3xl font-black text-[#15803d] mt-1">{score.correct}</p>
                 </div>
-                <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-xs text-muted-foreground">إجابات خاطئة</p>
-                  <p className="text-2xl font-display text-rose-400 mt-1">{score.wrong}</p>
+                <div className="rounded-xl border-2 border-[#282825] bg-white p-4 text-center shadow-[3px_3px_0_#282825]">
+                  <p className="text-xs font-black text-[#5f5f59]">إجابات خاطئة</p>
+                  <p className="text-3xl font-black text-[#b91c1c] mt-1">{score.wrong}</p>
                 </div>
-                <div className="liquid-glass p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-xs text-muted-foreground">متروك</p>
-                  <p className="text-2xl font-display text-amber-400 mt-1">{score.skipped}</p>
+                <div className="rounded-xl border-2 border-[#282825] bg-white p-4 text-center shadow-[3px_3px_0_#282825]">
+                  <p className="text-xs font-black text-[#5f5f59]">متروك دون حل</p>
+                  <p className="text-3xl font-black text-[#b45309] mt-1">{score.skipped}</p>
                 </div>
               </div>
             </div>
           </section>
 
-          <section className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-6">
-            <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-2xl font-display text-foreground">شرح الإجابات والسلم</h3>
+          <section className="rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] space-y-6">
+            <div className="flex flex-col gap-3 border-b-2 border-[#282825]/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-2xl font-black text-[#282825]">شرح الإجابات والسلم الوزاري</h3>
               <div className="flex flex-wrap gap-2">
                 {([
                   ['all', `الكل (${activeExam.questions.length})`],
@@ -211,10 +214,10 @@ export default function MinistryExamsPage() {
                   <button
                     key={key}
                     onClick={() => setReviewFilter(key)}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all cursor-pointer ${
+                    className={`rounded-xl border-2 border-[#282825] px-4 py-1.5 text-xs font-black transition-all cursor-pointer ${
                       reviewFilter === key
-                        ? 'liquid-glass-glow text-foreground border border-cyan-400/40'
-                        : 'liquid-glass text-muted-foreground border-white/5'
+                        ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]'
+                        : 'bg-white text-[#282825] hover:bg-[#ffd64d] shadow-[2px_2px_0_#282825]'
                     }`}
                   >
                     {label}
@@ -239,33 +242,44 @@ export default function MinistryExamsPage() {
                   return (
                     <article
                       key={q.id}
-                      className={`liquid-glass rounded-2xl p-5 border text-right space-y-3 ${
-                        ok ? 'border-emerald-400/30' : 'border-rose-400/30'
+                      className={`rounded-2xl border-2 border-[#282825] p-5 text-right space-y-3 shadow-[3px_3px_0_#282825] ${
+                        ok ? 'bg-[#cce6b4]/40' : 'bg-[#ff5636]/10'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-sm font-medium text-foreground">
+                        <h4 className="text-base font-black text-[#282825]">
                           {i + 1}. {q.question}
                         </h4>
-                        <span className={`text-[11px] px-3 py-0.5 rounded-full ${ok ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                        <span className={`text-xs font-black px-3 py-1 rounded-lg border border-[#282825] shadow-[1px_1px_0_#282825] ${
+                          ok ? 'bg-[#cce6b4] text-[#15803d]' : 'bg-[#ff5636] text-white'
+                        }`}>
                           {ok ? `+${q.points}` : skipped ? 'متروك' : 'خطأ'}
                         </span>
                       </div>
 
-                      <div className="space-y-2 text-xs text-muted-foreground leading-relaxed pt-2">
-                        <div className="bg-emerald-500/10 border border-emerald-400/20 p-3 rounded-xl text-emerald-300">
-                          <span className="font-bold">الإجابة النموذجية: </span>
+                      <div className="space-y-2 text-xs font-semibold text-[#282825] pt-2">
+                        <div className="bg-white border-2 border-[#282825] p-3 rounded-xl shadow-[2px_2px_0_#282825]">
+                          <span className="font-black text-[#15803d]">الإجابة النموذجية: </span>
                           <MathText text={q.options[q.correctIndex]} />
                         </div>
                         {userAnswer !== undefined && !ok && (
-                          <div className="bg-rose-500/10 border border-rose-400/20 p-3 rounded-xl text-rose-300">
-                            <span className="font-bold">إجابتك: </span>
+                          <div className="bg-white border-2 border-[#282825] p-3 rounded-xl shadow-[2px_2px_0_#282825]">
+                            <span className="font-black text-[#b91c1c]">إجابتك: </span>
                             <MathText text={q.options[userAnswer]} />
                           </div>
                         )}
-                        <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                          <span className="font-bold">التوضيح: </span>
+                        <div className="bg-[#fafaf7] p-3.5 rounded-xl border border-[#282825]/20">
+                          <span className="font-black text-[#ff5636]">التوضيح الوزاري: </span>
                           <MathText text={q.explanation} />
+                        </div>
+                        <div className="pt-2 flex justify-end">
+                          <button
+                            onClick={() => setSelectedRubricQuestion({ question: q, userAnswerIndex: userAnswer })}
+                            className="app-button border-2 border-[#282825] bg-[#ffd64d] text-[#282825] text-xs font-black px-4 py-2 shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] hover:-translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-[#ff5636]" />
+                            <span>سلم التصحيح والتحليل الذكي 🤖</span>
+                          </button>
                         </div>
                       </div>
                     </article>
@@ -274,55 +288,77 @@ export default function MinistryExamsPage() {
             </div>
           </section>
         </div>
+        <AiRubricModal
+          isOpen={!!selectedRubricQuestion}
+          onClose={() => setSelectedRubricQuestion(null)}
+          question={selectedRubricQuestion?.question || null}
+          userAnswerIndex={selectedRubricQuestion?.userAnswerIndex}
+          subjectName={activeExam?.subjectName}
+          year={activeExam?.year}
+          track={activeExam?.track}
+        />
       </SidebarLayout>
     );
   }
 
+  /* LIVE RUNNING QUIZ SCREEN */
   if (phase === 'running' && activeExam) {
     const current = activeExam.questions[currentIdx];
     const answeredCount = Object.keys(answers).length;
-    const progressPct = Math.round(((currentIdx + 1) / activeExam.questions.length) * 100);
 
     return (
       <SidebarLayout role={profile?.role} signOut={signOut}>
-        <div className="w-full space-y-6 p-4 sm:p-6 lg:p-8 text-right" dir="rtl">
-          <header className="liquid-glass-glow rounded-3xl p-6 border border-white/15 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto w-full max-w-[1180px] space-y-6 text-right bg-dot-pattern py-4" dir="rtl">
+          
+          <header className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[5px_5px_0_#282825] flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3.5 py-1 rounded-full inline-block font-medium">
+              <span className="app-chip bg-[#bce9fa] border border-[#282825] text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
                 {activeExam.subjectName} • {activeExam.year}
               </span>
-              <h1 className="text-3xl font-display font-normal text-foreground mt-2">{activeExam.title}</h1>
+              <h1 className="text-2xl font-black text-[#282825] mt-2">{activeExam.title}</h1>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="liquid-glass rounded-full px-5 py-2 text-xs font-mono font-bold text-foreground border border-white/10">
+              <div className="rounded-xl border-2 border-[#282825] bg-[#ffd64d] px-5 py-2 text-sm font-mono font-black text-[#282825] shadow-[2.5px_2.5px_0_#282825]">
                 ⏱️ {formatTimer(secondsLeft)}
               </div>
               <button
                 onClick={finishExam}
-                className="liquid-glass-glow rounded-full px-6 py-2 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-emerald-400/40 cursor-pointer flex items-center gap-1.5"
+                className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-5 py-2 text-xs font-black shadow-[2.5px_2.5px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                تسليم النموذج <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>تسليم النموذج</span>
+                <Check className="w-4 h-4 stroke-[3px]" />
               </button>
             </div>
           </header>
 
           <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
-            <section className="liquid-glass-glow rounded-3xl p-6 border border-white/15 space-y-6">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <span className="text-xs text-muted-foreground">السؤال {currentIdx + 1} من {activeExam.questions.length}</span>
-                <button
-                  onClick={() => toggleFlag(current.id)}
-                  className={`text-xs font-medium px-3 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1.5 ${
-                    flagged[current.id] ? 'bg-amber-400/20 text-amber-300 border-amber-400/30' : 'liquid-glass border-white/10 text-muted-foreground'
-                  }`}
-                >
-                  <Bookmark className={`w-3.5 h-3.5 ${flagged[current.id] ? 'fill-amber-300 text-amber-300' : ''}`} />
-                  {flagged[current.id] ? 'مؤشر للمراجعة' : 'تأشير للمراجعة'}
-                </button>
+            <section className="rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] space-y-6 bg-dot-pattern-dense">
+              <div className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-4">
+                <span className="text-xs font-black text-[#5f5f59]">السؤال {currentIdx + 1} من {activeExam.questions.length}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedRubricQuestion({ question: current, userAnswerIndex: answers[current.id] })}
+                    className="text-xs font-black px-3 py-1.5 rounded-xl border-2 bg-[#ffd64d] text-[#282825] border-[#282825] shadow-[2px_2px_0_#282825] hover:shadow-[3px_3px_0_#282825] transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#ff5636]" />
+                    <span>سلم التصحيح والتحليل 🤖</span>
+                  </button>
+                  <button
+                    onClick={() => toggleFlag(current.id)}
+                    className={`text-xs font-black px-3.5 py-1.5 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                      flagged[current.id] 
+                        ? 'bg-[#ffd64d] text-[#282825] border-[#282825] shadow-[2px_2px_0_#282825]' 
+                        : 'bg-white border-[#282825] text-[#5f5f59] shadow-[1.5px_1.5px_0_#282825]'
+                    }`}
+                  >
+                    <Bookmark className={`w-3.5 h-3.5 ${flagged[current.id] ? 'fill-[#282825] text-[#282825]' : ''}`} />
+                    {flagged[current.id] ? 'مؤشر للمراجعة' : 'تأشير للمراجعة'}
+                  </button>
+                </div>
               </div>
 
-              <h3 className="text-2xl font-display text-foreground leading-relaxed">
+              <h3 className="text-2xl font-black text-[#282825] leading-relaxed">
                 {current.question}
               </h3>
 
@@ -333,13 +369,13 @@ export default function MinistryExamsPage() {
                     <button
                       key={optIdx}
                       onClick={() => selectOption(current.id, optIdx)}
-                      className={`flex items-center text-right w-full p-4 rounded-2xl border transition-all text-xs cursor-pointer ${
+                      className={`flex items-center text-right w-full p-4 rounded-xl border-2 transition-all text-sm font-bold cursor-pointer ${
                         isSelected
-                          ? 'liquid-glass-glow border-cyan-400/50 text-cyan-200'
-                          : 'liquid-glass border-white/10 text-muted-foreground hover:text-foreground'
+                          ? 'bg-[#ffd64d] border-[#282825] text-[#282825] shadow-[4px_4px_0_#282825]'
+                          : 'bg-white border-[#282825] text-[#282825] hover:bg-[#bce9fa] shadow-[2px_2px_0_#282825]'
                       }`}
                     >
-                      <span className="h-6 w-6 rounded-full flex items-center justify-center font-display text-[10px] bg-white/10 ml-3 shrink-0">
+                      <span className="h-7 w-7 rounded-lg border border-[#282825] flex items-center justify-center font-black text-xs bg-white ml-3 shrink-0 shadow-[1px_1px_0_#282825]">
                         {OPTION_LETTERS[optIdx]}
                       </span>
                       <MathText text={opt} className="flex-1" />
@@ -348,26 +384,26 @@ export default function MinistryExamsPage() {
                 })}
               </div>
 
-              <div className="flex items-center justify-between pt-6 border-t border-white/10">
+              <div className="flex items-center justify-between pt-6 border-t-2 border-[#282825]/10">
                 <button
                   onClick={() => setCurrentIdx((prev) => Math.max(0, prev - 1))}
                   disabled={currentIdx === 0}
-                  className="liquid-glass rounded-full px-6 py-2.5 text-xs text-foreground font-medium disabled:opacity-40 cursor-pointer"
+                  className="app-button border-2 border-[#282825] bg-white text-[#282825] px-6 py-2.5 text-xs font-black shadow-[2.5px_2.5px_0_#282825] disabled:opacity-40 cursor-pointer"
                 >
                   ← السابق
                 </button>
                 <button
                   onClick={() => setCurrentIdx((prev) => Math.min(activeExam.questions.length - 1, prev + 1))}
                   disabled={currentIdx === activeExam.questions.length - 1}
-                  className="liquid-glass-glow rounded-full px-8 py-2.5 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 cursor-pointer disabled:opacity-40"
+                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-8 py-2.5 text-xs font-black shadow-[2.5px_2.5px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all cursor-pointer disabled:opacity-40"
                 >
                   التالي →
                 </button>
               </div>
             </section>
 
-            <aside className="liquid-glass-glow rounded-3xl p-5 border border-white/15 h-fit">
-              <h4 className="font-display text-xl text-foreground border-b border-white/10 pb-3 mb-4">خريطة النموذج</h4>
+            <aside className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[5px_5px_0_#282825] h-fit">
+              <h4 className="font-black text-lg text-[#282825] border-b-2 border-[#282825]/10 pb-3 mb-4">خريطة الأسئلة</h4>
               <div className="grid grid-cols-5 gap-2">
                 {activeExam.questions.map((q, idx) => {
                   const isCurrent = idx === currentIdx;
@@ -376,12 +412,12 @@ export default function MinistryExamsPage() {
                     <button
                       key={q.id}
                       onClick={() => setCurrentIdx(idx)}
-                      className={`h-9 w-9 rounded-xl font-display text-xs border transition-all cursor-pointer ${
+                      className={`h-9 w-9 rounded-xl font-black text-xs border-2 transition-all cursor-pointer ${
                         isCurrent
-                          ? 'liquid-glass-glow text-foreground border-cyan-400/50 scale-105'
+                          ? 'bg-[#ff5636] text-white border-[#282825] shadow-[2px_2px_0_#282825] scale-105'
                           : isAnswered
-                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/30'
-                          : 'liquid-glass text-muted-foreground border-white/5'
+                          ? 'bg-[#ffd64d] text-[#282825] border-[#282825] shadow-[1.5px_1.5px_0_#282825]'
+                          : 'bg-white text-[#282825] border-[#282825] shadow-[1px_1px_0_#282825]'
                       }`}
                     >
                       {idx + 1}
@@ -392,113 +428,142 @@ export default function MinistryExamsPage() {
             </aside>
           </div>
         </div>
+        <AiRubricModal
+          isOpen={!!selectedRubricQuestion}
+          onClose={() => setSelectedRubricQuestion(null)}
+          question={selectedRubricQuestion?.question || null}
+          userAnswerIndex={selectedRubricQuestion?.userAnswerIndex}
+          subjectName={activeExam?.subjectName}
+          year={activeExam?.year}
+          track={activeExam?.track}
+        />
       </SidebarLayout>
     );
   }
 
+  /* CATALOG SCREEN */
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="w-full space-y-6 p-4 sm:p-6 lg:p-8 text-right" dir="rtl">
-        <section className="liquid-glass-glow rounded-3xl p-8 border border-white/15 space-y-4">
-          <span className="text-xs font-medium px-4 py-1.5 liquid-glass rounded-full text-cyan-300 border border-cyan-400/20 uppercase inline-flex items-center gap-1.5">
-            <Landmark className="w-4 h-4 text-cyan-300" /> محاكي الامتحانات الوزارية
+      <main className="mx-auto w-full max-w-[1180px] space-y-8 text-right bg-dot-pattern py-4" dir="rtl">
+        
+        {/* Banner Section */}
+        <section className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-6 sm:p-8 shadow-[6px_6px_0_#282825] space-y-4 bg-stripe-pattern">
+          <span className="app-chip bg-white border border-[#282825] text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
+            <Landmark className="w-4 h-4 text-[#ff5636]" /> محاكي الامتحانات الوزارية
           </span>
-          <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground">
+          <h1 className="text-3xl font-black tracking-tight sm:text-5xl text-[#282825]">
             النماذج الوزارية الرسمية
           </h1>
-          <p className="text-muted-foreground text-sm max-w-2xl leading-relaxed">
-            تجربة امتحانية حقيقية: فلاتر دقيقة، مؤقت زمني مطابق للامتحان الوزاري، وسلم تصحيح تفصيلي.
+          <p className="text-[#282825] text-sm max-w-2xl leading-relaxed font-bold">
+            تجربة امتحانية حقيقية: فلاتر دقيقة حسب الفرع، مؤقت زمني مطابق للامتحان الوزاري، وسلم تصحيح تفصيلي.
           </p>
         </section>
 
-        <section className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-4">
+        {/* Search & Filter Bar */}
+        <section className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825] space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="ابحث باسم المادة، السنة، أو الدورة..."
-              className="w-full sm:max-w-md liquid-glass rounded-2xl p-3.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-cyan-400/40"
+              className="w-full sm:max-w-md app-input text-xs font-semibold border-2 border-[#282825] shadow-[2px_2px_0_#282825] focus:shadow-[4px_4px_0_#282825]"
             />
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2.5">
               <button
                 onClick={() => setTrackFilter('all')}
-                className={`px-5 py-2 rounded-full text-xs font-medium transition-all cursor-pointer ${
+                className={`rounded-xl border-2 border-[#282825] px-4 py-2 text-xs font-black transition-all cursor-pointer ${
                   trackFilter === 'all'
-                    ? 'liquid-glass-glow text-foreground border border-cyan-400/40 scale-105'
-                    : 'liquid-glass text-muted-foreground border-white/5'
+                    ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]'
+                    : 'bg-white text-[#282825] hover:bg-[#ffd64d] shadow-[2px_2px_0_#282825]'
                 }`}
               >
                 الكل
               </button>
               <button
                 onClick={() => setTrackFilter('scientific')}
-                className={`px-5 py-2 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`rounded-xl border-2 border-[#282825] px-4 py-2 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
                   trackFilter === 'scientific'
-                    ? 'liquid-glass-glow text-foreground border border-cyan-400/40 scale-105'
-                    : 'liquid-glass text-muted-foreground border-white/5'
+                    ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]'
+                    : 'bg-[#ffdc72] text-[#282825] shadow-[2px_2px_0_#282825]'
                 }`}
               >
-                <FlaskConical className="w-3.5 h-3.5 text-cyan-400" /> علمي
+                <FlaskConical className="w-3.5 h-3.5 text-[#ff5636]" /> الفرع العلمي
               </button>
               <button
                 onClick={() => setTrackFilter('literary')}
-                className={`px-5 py-2 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`rounded-xl border-2 border-[#282825] px-4 py-2 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
                   trackFilter === 'literary'
-                    ? 'liquid-glass-glow text-foreground border border-cyan-400/40 scale-105'
-                    : 'liquid-glass text-muted-foreground border-white/5'
+                    ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]'
+                    : 'bg-[#d8bcff] text-[#282825] shadow-[2px_2px_0_#282825]'
                 }`}
               >
-                <BookOpen className="w-3.5 h-3.5 text-pink-400" /> أدبي
+                <BookOpen className="w-3.5 h-3.5 text-[#7c3aed]" /> الفرع الأدبي
               </button>
             </div>
           </div>
         </section>
 
+        {/* Exams Catalog Grid */}
         <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredExams.map((exam) => (
-            <article
-              key={exam.id}
-              className="liquid-glass-glow rounded-3xl p-6 border border-white/15 flex flex-col justify-between hover:scale-[1.02] transition-all group"
-            >
-              <div className="space-y-4 text-right">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3 py-0.5 rounded-full">
-                    {exam.subjectName}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{exam.year}</span>
-                </div>
-
-                <h3 className="text-2xl font-display font-normal text-foreground group-hover:text-cyan-200 transition-colors">
-                  {exam.title}
-                </h3>
-
-                <div className="grid grid-cols-3 gap-2 py-3 border-y border-white/10 text-center text-xs">
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">الوقت</span>
-                    <span className="text-foreground font-medium">{exam.durationMinutes}د</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">الأسئلة</span>
-                    <span className="text-foreground font-medium">{exam.questions.length}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-[10px]">العلامة</span>
-                    <span className="text-foreground font-medium">{exam.totalMarks}</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => launchExam(exam)}
-                className="liquid-glass-glow rounded-full w-full py-3 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 mt-6 cursor-pointer"
+          {filteredExams.map((exam) => {
+            const cardBg = exam.track === 'scientific' ? 'bg-[#ffdc72] neo-shadow-interactive-yellow' : 'bg-[#d8bcff] neo-shadow-interactive-purple';
+            return (
+              <article
+                key={exam.id}
+                className={`rounded-2xl border-2 border-[#282825] p-6 flex flex-col justify-between transition-all group hover:scale-[1.02] ${cardBg}`}
               >
-                ابدأ النموذج ←
-              </button>
-            </article>
-          ))}
+                <div className="space-y-4 text-right">
+                  <div className="flex justify-between items-center">
+                    <span className="app-chip bg-white border border-[#282825] px-3 py-0.5 text-[11px] font-black shadow-[1.5px_1.5px_0_#282825]">
+                      {exam.subjectName}
+                    </span>
+                    <span className="app-chip bg-white/80 border border-[#282825] px-3 py-0.5 text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
+                      {exam.year}
+                    </span>
+                  </div>
+
+                  <h3 className="text-2xl font-black text-[#282825] group-hover:text-[#ff5636] transition-colors leading-snug">
+                    {exam.title}
+                  </h3>
+
+                  <div className="grid grid-cols-3 gap-2 py-3 border-y border-[#282825]/15 text-center text-xs font-bold">
+                    <div>
+                      <span className="text-[#5f5f59] block text-[10px] font-black">الوقت</span>
+                      <span className="text-[#282825] font-black">{exam.durationMinutes} دقيقة</span>
+                    </div>
+                    <div>
+                      <span className="text-[#5f5f59] block text-[10px] font-black">الأسئلة</span>
+                      <span className="text-[#282825] font-black">{exam.questions.length} أسئلة</span>
+                    </div>
+                    <div>
+                      <span className="text-[#5f5f59] block text-[10px] font-black">العلامة</span>
+                      <span className="text-[#282825] font-black">{exam.totalMarks} درجة</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => launchExam(exam)}
+                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white w-full py-3 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[4px_4px_0_#282825] hover:-translate-y-0.5 transition-all mt-6 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <span>ابدأ النموذج الوزاري</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+              </article>
+            );
+          })}
         </section>
-      </div>
+      </main>
+      <AiRubricModal
+        isOpen={!!selectedRubricQuestion}
+        onClose={() => setSelectedRubricQuestion(null)}
+        question={selectedRubricQuestion?.question || null}
+        userAnswerIndex={selectedRubricQuestion?.userAnswerIndex}
+        subjectName={activeExam?.subjectName}
+        year={activeExam?.year}
+        track={activeExam?.track}
+      />
     </SidebarLayout>
   );
 }

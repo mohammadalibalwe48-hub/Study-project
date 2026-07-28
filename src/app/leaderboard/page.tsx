@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase/client';
 import SidebarLayout from '@/components/SidebarLayout';
 import { TableSkeleton } from '@/components/SkeletonLoader';
-import { Trophy, Medal, Award } from 'lucide-react';
+import { Trophy, Medal, Award, Crown, Sparkles } from 'lucide-react';
 
 export default function LeaderboardPage() {
   const { user, profile, loading, signOut } = useAuth();
@@ -83,30 +83,85 @@ export default function LeaderboardPage() {
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-8 border border-white/15 text-right overflow-y-auto">
-        <div className="max-w-4xl mx-auto w-full space-y-8">
-          
-          <div className="space-y-4 border-b border-white/10 pb-6">
-            <span className="text-xs font-medium px-4 py-1.5 liquid-glass rounded-full text-amber-300 border border-amber-400/20 uppercase inline-block">
-              قائمة الشرف والتفوق
-            </span>
-            <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground">
-              لوحة الصدارة والأوائل
-            </h1>
-            <p className="text-muted-foreground text-sm max-w-xl leading-relaxed">
-              قائمة الطلاب المتفوقين في النماذج الامتحانية المؤتمتة. حل المزيد من الاختبارات للوصول إلى القمة!
-            </p>
-          </div>
+      <main className="mx-auto w-full max-w-[1180px] space-y-8 text-right bg-dot-pattern py-4" dir="rtl">
+        
+        {/* Header */}
+        <div className="space-y-3 border-b-2 border-[#282825] pb-6">
+          <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
+            <Trophy className="h-4 w-4 text-[#ff5636]" /> قائمة الشرف والتفوق
+          </span>
+          <h1 className="mt-2 text-3xl font-black sm:text-5xl text-[#282825]">
+            لوحة الصدارة والأوائل
+          </h1>
+          <p className="text-[#5f5f59] text-sm max-w-xl leading-relaxed font-semibold">
+            قائمة الطلاب المتفوقين في النماذج الامتحانية المؤتمتة. حل المزيد من الاختبارات للوصول إلى القمة!
+          </p>
+        </div>
 
-          {realLeaderboard.length === 0 ? (
-            <div className="liquid-glass rounded-3xl p-16 text-center text-muted-foreground text-sm border border-white/10 space-y-4">
-              <Trophy className="w-12 h-12 text-amber-400 mx-auto" />
-              <h3 className="text-2xl font-display text-foreground">لا توجد نتائج مسجلة حتى الآن</h3>
-              <p className="text-xs">حل الاختبارات للظهور في لوحة الصدارة.</p>
-            </div>
-          ) : (
-            <div className="liquid-glass rounded-3xl overflow-hidden border border-white/15">
-              <div className="divide-y divide-white/10">
+        {realLeaderboard.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-[#282825] bg-white p-16 text-center text-[#5f5f59] text-sm font-black shadow-[4px_4px_0_#282825] space-y-4">
+            <Trophy className="w-12 h-12 text-[#ff5636] mx-auto" />
+            <h3 className="text-2xl font-black text-[#282825]">لا توجد نتائج مسجلة حتى الآن</h3>
+            <p className="text-xs font-semibold">حل الاختبارات للظهور في لوحة الصدارة.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            
+            {/* Top 3 Podium Cards */}
+            {realLeaderboard.length >= 3 && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2">
+                
+                {/* 2nd Place */}
+                <div className="rounded-2xl border-2 border-[#282825] bg-[#bce9fa] p-6 shadow-[5px_5px_0_#282825] flex flex-col justify-between items-center text-center order-2 sm:order-1">
+                  <div className="flex flex-col items-center space-y-2">
+                    <span className="h-12 w-12 rounded-xl border-2 border-[#282825] bg-white flex items-center justify-center font-black text-xl shadow-[2px_2px_0_#282825]">
+                      🥈 2
+                    </span>
+                    <h3 className="font-black text-xl text-[#282825] mt-2">{realLeaderboard[1].name}</h3>
+                    <span className="text-xs font-extrabold text-[#282825]/70">{realLeaderboard[1].course}</span>
+                  </div>
+                  <span className="app-chip bg-white border border-[#282825] px-4 py-1 text-sm font-black shadow-[1.5px_1.5px_0_#282825] mt-4">
+                    %{realLeaderboard[1].scorePercent}
+                  </span>
+                </div>
+
+                {/* 1st Place */}
+                <div className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-6 shadow-[6px_6px_0_#282825] flex flex-col justify-between items-center text-center order-1 sm:order-2 sm:-translate-y-2 bg-stripe-pattern">
+                  <div className="flex flex-col items-center space-y-2">
+                    <span className="h-14 w-14 rounded-2xl border-2 border-[#282825] bg-white flex items-center justify-center font-black text-2xl shadow-[3px_3px_0_#282825]">
+                      🥇 1
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Crown className="h-5 w-5 text-[#ff5636]" />
+                      <h3 className="font-black text-2xl text-[#282825]">{realLeaderboard[0].name}</h3>
+                    </div>
+                    <span className="text-xs font-extrabold text-[#282825]">{realLeaderboard[0].course}</span>
+                  </div>
+                  <span className="app-chip bg-[#ff5636] text-white border border-[#282825] px-5 py-1.5 text-base font-black shadow-[2px_2px_0_#282825] mt-4">
+                    %{realLeaderboard[0].scorePercent}
+                  </span>
+                </div>
+
+                {/* 3rd Place */}
+                <div className="rounded-2xl border-2 border-[#282825] bg-[#d8bcff] p-6 shadow-[5px_5px_0_#282825] flex flex-col justify-between items-center text-center order-3">
+                  <div className="flex flex-col items-center space-y-2">
+                    <span className="h-12 w-12 rounded-xl border-2 border-[#282825] bg-white flex items-center justify-center font-black text-xl shadow-[2px_2px_0_#282825]">
+                      🥉 3
+                    </span>
+                    <h3 className="font-black text-xl text-[#282825] mt-2">{realLeaderboard[2].name}</h3>
+                    <span className="text-xs font-extrabold text-[#282825]/70">{realLeaderboard[2].course}</span>
+                  </div>
+                  <span className="app-chip bg-white border border-[#282825] px-4 py-1 text-sm font-black shadow-[1.5px_1.5px_0_#282825] mt-4">
+                    %{realLeaderboard[2].scorePercent}
+                  </span>
+                </div>
+
+              </div>
+            )}
+
+            {/* Complete Ranking List Table */}
+            <div className="rounded-2xl border-2 border-[#282825] bg-white overflow-hidden shadow-[5px_5px_0_#282825]">
+              <div className="divide-y-2 border-[#282825]/10">
                 {realLeaderboard.map((item, index) => {
                   const isTop1 = index === 0;
                   const isTop2 = index === 1;
@@ -115,35 +170,35 @@ export default function LeaderboardPage() {
                   return (
                     <div
                       key={index}
-                      className="p-5 flex items-center justify-between hover:bg-white/5 transition-colors gap-4"
+                      className="p-4 sm:p-5 flex items-center justify-between hover:bg-[#fafaf7] transition-colors gap-4"
                     >
                       <div className="flex items-center gap-4">
                         <span
-                          className={`w-10 h-10 rounded-full flex items-center justify-center font-display font-bold text-base ${
+                          className={`w-10 h-10 rounded-xl border-2 border-[#282825] flex items-center justify-center font-black text-sm shadow-[1.5px_1.5px_0_#282825] ${
                             isTop1
-                              ? 'bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/20'
+                              ? 'bg-[#ffd64d] text-[#282825]'
                               : isTop2
-                              ? 'bg-slate-300 text-slate-950 shadow-lg shadow-slate-300/20'
+                              ? 'bg-[#bce9fa] text-[#282825]'
                               : isTop3
-                              ? 'bg-amber-700 text-white'
-                              : 'bg-white/5 text-muted-foreground border border-white/10'
+                              ? 'bg-[#d8bcff] text-[#282825]'
+                              : 'bg-white text-[#282825]'
                           }`}
                         >
                           {index + 1}
                         </span>
 
                         <div className="text-right">
-                          <h4 className="text-lg font-medium text-foreground">{item.name}</h4>
-                          <span className="text-xs text-muted-foreground">{item.course}</span>
+                          <h3 className="text-base font-black text-[#282825]">{item.name}</h3>
+                          <span className="text-xs font-semibold text-[#5f5f59]">{item.course}</span>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {isTop1 && <span className="text-xs text-amber-400 font-medium flex items-center gap-1"><Trophy className="w-4 h-4 text-amber-400" /> المركز الأول</span>}
-                        {isTop2 && <span className="text-xs text-slate-300 font-medium flex items-center gap-1"><Medal className="w-4 h-4 text-slate-300" /> المركز الثاني</span>}
-                        {isTop3 && <span className="text-xs text-amber-600 font-medium flex items-center gap-1"><Award className="w-4 h-4 text-amber-600" /> المركز الثالث</span>}
+                        {isTop1 && <span className="app-chip bg-[#ffd64d] border border-[#282825] text-xs font-black shadow-[1px_1px_0_#282825] hidden sm:flex items-center gap-1"><Trophy className="w-3.5 h-3.5 text-[#ff5636]" /> المركز الأول</span>}
+                        {isTop2 && <span className="app-chip bg-[#bce9fa] border border-[#282825] text-xs font-black shadow-[1px_1px_0_#282825] hidden sm:flex items-center gap-1"><Medal className="w-3.5 h-3.5 text-[#ff5636]" /> المركز الثاني</span>}
+                        {isTop3 && <span className="app-chip bg-[#d8bcff] border border-[#282825] text-xs font-black shadow-[1px_1px_0_#282825] hidden sm:flex items-center gap-1"><Award className="w-3.5 h-3.5 text-[#ff5636]" /> المركز الثالث</span>}
 
-                        <span className="liquid-glass-glow rounded-full px-4 py-1.5 text-xs text-emerald-400 font-bold border border-emerald-400/30">
+                        <span className="app-chip bg-[#cce6b4] border border-[#282825] px-3.5 py-1 text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
                           %{item.scorePercent}
                         </span>
                       </div>
@@ -152,9 +207,10 @@ export default function LeaderboardPage() {
                 })}
               </div>
             </div>
-          )}
-        </div>
-      </div>
+
+          </div>
+        )}
+      </main>
     </SidebarLayout>
   );
 }

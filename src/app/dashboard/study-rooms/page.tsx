@@ -9,8 +9,7 @@ import SidebarLayout from '@/components/SidebarLayout';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { awardXP, updateStreak, checkAndUnlockBadges } from '@/utils/xpHelper';
 import { focusAudio } from '@/utils/audioSynth';
-import { ClockIcon, FlameIcon, SparkIcon, TargetIcon, TrophyIcon } from '@/components/icons/SvgIcons';
-import { Target, Rocket, Brain, Pause, Play, RotateCcw, CloudRain, Sparkles, Coffee, MessageSquare } from 'lucide-react';
+import { Target, Rocket, Brain, Pause, Play, RotateCcw, CloudRain, Sparkles, Coffee, MessageSquare, ArrowLeft } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -72,7 +71,7 @@ export default function StudyRoomsPage() {
         setSubjects(data || []);
       } catch (err) {
         console.error('Error fetching study room subjects:', err);
-      } finally {
+      } font-blackally {
         setDbLoading(false);
       }
     }
@@ -222,18 +221,18 @@ export default function StudyRoomsPage() {
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="flex-1 liquid-glass-glow rounded-3xl p-8 flex flex-col gap-8 overflow-y-auto text-right border border-white/15">
+      <main className="mx-auto w-full max-w-[1180px] space-y-8 text-right bg-dot-pattern py-4" dir="rtl">
 
         {/* Top Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-[#282825] pb-6">
           <div>
-            <span className="text-xs font-medium px-4 py-1.5 liquid-glass rounded-full text-cyan-300 border border-cyan-400/20 uppercase inline-block">
-              غرف التركيز الافتراضية
+            <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
+              <Target className="h-4 w-4 text-[#ff5636]" /> غرف التركيز الافتراضية
             </span>
-            <h1 className="text-4xl sm:text-6xl font-display font-normal text-foreground mt-3 flex items-center gap-3">
-              مساحة المذاكرة التفاعلية <Target className="w-8 h-8 text-cyan-400" />
+            <h1 className="mt-2 text-3xl font-black sm:text-5xl text-[#282825]">
+              مساحة المذاكرة التفاعلية
             </h1>
-            <p className="text-muted-foreground text-sm max-w-xl leading-relaxed">
+            <p className="text-[#5f5f59] text-sm max-w-xl leading-relaxed font-semibold mt-1">
               انضم لغرفة المادة الدراسية، اضبط مؤقت البومودورو، استمع لأصوات التركيز الذهنية، وتبادل الأسئلة مع زملائك.
             </p>
           </div>
@@ -246,7 +245,7 @@ export default function StudyRoomsPage() {
                 focusAudio.stopFocusSound();
                 setSoundMode('off');
               }}
-              className="liquid-glass rounded-full px-6 py-2.5 text-xs text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 transition-all cursor-pointer"
+              className="app-button border-2 border-[#282825] bg-white text-[#ff5636] px-5 py-2.5 text-xs font-black shadow-[2.5px_2.5px_0_#282825] hover:bg-[#ff5636] hover:text-white transition-all cursor-pointer"
             >
               ← اختيار غرفة أخرى
             </button>
@@ -256,52 +255,58 @@ export default function StudyRoomsPage() {
         {!selectedSubject ? (
           /* ROOM SELECTION GRID */
           <div className="space-y-6">
-            <div className="flex justify-between items-center liquid-glass p-6 rounded-3xl border border-white/10">
+            <div className="flex justify-between items-center rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]">
               <div>
-                <h2 className="text-2xl font-display font-normal text-foreground">اختر مقرر المادة للانضمام لغرفة التركيز</h2>
-                <p className="text-xs text-muted-foreground mt-1">كل غرفة توفر بيئة تفاعلية ومؤقتات تخصصية وأصوات ذهنية لرفع التركيز.</p>
+                <h2 className="text-xl font-black text-[#282825]">اختر غرفة المادة للانضمام لغرفة التركيز</h2>
+                <p className="text-xs font-bold text-[#5f5f59] mt-1">كل غرفة توفر بيئة تفاعلية ومؤقتات تخصصية وأصوات ذهنية لرفع التركيز.</p>
               </div>
-              <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3.5 py-1 rounded-full">
-                {subjects.length} غرف متاحية
+              <span className="app-chip bg-[#bce9fa] border border-[#282825] text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
+                {subjects.length} غرف متاحة
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {subjects.map((sub) => (
-                <div
-                  key={sub.id}
-                  className="liquid-glass-glow rounded-3xl p-6 border border-white/15 flex flex-col justify-between min-h-[250px] hover:scale-[1.03] transition-all group text-right"
-                >
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-3 py-1 rounded-full">
-                        مقرر بكالوريا
-                      </span>
-                      <span className="text-xs text-emerald-400 flex items-center gap-1.5 bg-emerald-400/10 px-2.5 py-0.5 rounded-full border border-emerald-400/20">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                        غرفة مفعّلة
-                      </span>
+              {subjects.map((sub, index) => {
+                const cardBgs = ['bg-[#ffdc72] neo-shadow-interactive-yellow', 'bg-[#bce9fa] neo-shadow-interactive-blue', 'bg-[#d8bcff] neo-shadow-interactive-purple', 'bg-[#cce6b4] neo-shadow-interactive-coral'];
+                const bg = cardBgs[index % cardBgs.length];
+
+                return (
+                  <div
+                    key={sub.id}
+                    className={`rounded-2xl border-2 border-[#282825] p-6 flex flex-col justify-between min-h-[250px] transition-all group text-right ${bg}`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="app-chip bg-white border border-[#282825] px-3 py-1 text-[11px] font-black shadow-[1.5px_1.5px_0_#282825]">
+                          مقرر بكالوريا
+                        </span>
+                        <span className="app-chip bg-white border border-[#282825] px-2.5 py-0.5 text-xs font-black text-[#15803d] shadow-[1.5px_1.5px_0_#282825] flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-[#15803d] animate-pulse" />
+                          متاحة الآن
+                        </span>
+                      </div>
+
+                      <h3 className="text-3xl font-black text-[#282825] group-hover:text-[#ff5636] transition-colors">
+                        {sub.name}
+                      </h3>
+                      <p className="text-xs font-semibold text-[#4a4a44] leading-relaxed line-clamp-2">
+                        {sub.description || 'جلسات تكرار متباعد وحل تمارين مع زملائك بكفاءة عالية.'}
+                      </p>
                     </div>
 
-                    <h3 className="text-3xl font-display font-normal text-foreground group-hover:text-cyan-200 transition-colors">
-                      {sub.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                      {sub.description || 'جلسات تكرار متباعد وحل تمارين مع زملائك بكفاءة عالية.'}
-                    </p>
+                    <button
+                      onClick={() => {
+                        setSelectedSubject(sub);
+                        setTimerActive(false);
+                      }}
+                      className="app-button border-2 border-[#282825] bg-[#ff5636] text-white w-full py-3 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[4px_4px_0_#282825] hover:-translate-y-0.5 transition-all mt-6 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Rocket className="w-4 h-4 text-white" /> 
+                      <span>دخول غرفة {sub.name}</span>
+                    </button>
                   </div>
-
-                  <button
-                    onClick={() => {
-                      setSelectedSubject(sub);
-                      setTimerActive(false);
-                    }}
-                    className="liquid-glass-glow rounded-full w-full py-3.5 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 mt-6 cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <Rocket className="w-4 h-4 text-cyan-400" /> دخول غرفة {sub.name}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -310,38 +315,42 @@ export default function StudyRoomsPage() {
             
             {/* TIMER & AUDIO */}
             <div className="lg:col-span-7 flex flex-col gap-6">
-              <div className="liquid-glass-glow rounded-3xl p-8 border border-white/15 flex flex-col items-center justify-center text-center space-y-6">
-                <div className="flex items-center justify-between w-full border-b border-white/10 pb-4">
-                  <h2 className="text-3xl font-display font-normal text-foreground flex items-center gap-2">
-                    غرفة {selectedSubject.name} <Brain className="w-6 h-6 text-purple-400" />
+              <div className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-8 shadow-[6px_6px_0_#282825] flex flex-col items-center justify-center text-center space-y-6 bg-stripe-pattern">
+                <div className="flex items-center justify-between w-full border-b-2 border-[#282825]/15 pb-4">
+                  <h2 className="text-2xl font-black text-[#282825] flex items-center gap-2">
+                    غرفة {selectedSubject.name} <Brain className="w-6 h-6 text-[#ff5636]" />
                   </h2>
                   
                   <div className="flex gap-2">
                     <button
                       onClick={() => selectTimerPreset(1500)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${timerDuration === 1500 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' : 'liquid-glass text-muted-foreground'}`}
+                      className={`rounded-xl border-2 border-[#282825] px-3.5 py-1 text-xs font-black transition-all ${
+                        timerDuration === 1500 ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]' : 'bg-white text-[#282825] shadow-[2px_2px_0_#282825]'
+                      }`}
                     >
                       25د بومودورو
                     </button>
                     <button
                       onClick={() => selectTimerPreset(3000)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${timerDuration === 3000 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' : 'liquid-glass text-muted-foreground'}`}
+                      className={`rounded-xl border-2 border-[#282825] px-3.5 py-1 text-xs font-black transition-all ${
+                        timerDuration === 3000 ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]' : 'bg-white text-[#282825] shadow-[2px_2px_0_#282825]'
+                      }`}
                     >
                       50د مركز
                     </button>
                   </div>
                 </div>
 
-                <div className="text-6xl sm:text-7xl font-display font-normal text-foreground tracking-widest font-mono">
+                <div className="text-6xl sm:text-7xl font-black text-[#282825] tracking-widest font-mono">
                   {formatTime(timerSecondsLeft)}
                 </div>
 
                 <div className="flex gap-4">
                   <button
                     onClick={() => setTimerActive(!timerActive)}
-                    className="liquid-glass-glow rounded-full px-10 py-3 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40 cursor-pointer flex items-center gap-2"
+                    className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-8 py-3 text-xs font-black shadow-[3px_3px_0_#282825] hover:shadow-[5px_5px_0_#282825] transition-all cursor-pointer flex items-center gap-2"
                   >
-                    {timerActive ? <><Pause className="w-4 h-4" /> إيقاف مؤقت</> : <><Play className="w-4 h-4 text-cyan-400 fill-cyan-400" /> بدء التركيز</>}
+                    {timerActive ? <><Pause className="w-4 h-4" /> إيقاف مؤقت</> : <><Play className="w-4 h-4 text-white fill-white" /> بدء التركيز</>}
                   </button>
 
                   <button
@@ -349,7 +358,7 @@ export default function StudyRoomsPage() {
                       setTimerActive(false);
                       setTimerSecondsLeft(timerDuration);
                     }}
-                    className="liquid-glass rounded-full px-6 py-3 text-xs text-muted-foreground hover:text-foreground border border-white/10 flex items-center gap-1.5"
+                    className="app-button border-2 border-[#282825] bg-white text-[#282825] px-6 py-3 text-xs font-black shadow-[2.5px_2.5px_0_#282825] flex items-center gap-1.5"
                   >
                     إعادة ضبط <RotateCcw className="w-3.5 h-3.5" />
                   </button>
@@ -357,62 +366,69 @@ export default function StudyRoomsPage() {
               </div>
 
               {/* Sound Ambience */}
-              <div className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-4">
-                <h3 className="text-xl font-display text-foreground">أصوات التركيز والخلفية الذهنية</h3>
+              <div className="rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] space-y-4">
+                <h3 className="text-lg font-black text-[#282825]">أصوات التركيز والخلفية الذهنية</h3>
                 <div className="grid grid-cols-3 gap-3">
                   <button
                     onClick={() => handleSoundToggle('rain')}
-                    className={`py-3 rounded-2xl text-xs font-medium border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${soundMode === 'rain' ? 'liquid-glass-glow text-cyan-300 border-cyan-400/40' : 'liquid-glass text-muted-foreground'}`}
+                    className={`py-3 rounded-xl border-2 border-[#282825] text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      soundMode === 'rain' ? 'bg-[#bce9fa] text-[#282825] shadow-[3px_3px_0_#282825]' : 'bg-white text-[#5f5f59] shadow-[2px_2px_0_#282825]'
+                    }`}
                   >
-                    <CloudRain className="w-4 h-4 text-cyan-400" /> مطر ناعم
+                    <CloudRain className="w-4 h-4 text-[#ff5636]" /> مطر ناعم
                   </button>
                   <button
                     onClick={() => handleSoundToggle('binaural')}
-                    className={`py-3 rounded-2xl text-xs font-medium border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${soundMode === 'binaural' ? 'liquid-glass-glow text-cyan-300 border-cyan-400/40' : 'liquid-glass text-muted-foreground'}`}
+                    className={`py-3 rounded-xl border-2 border-[#282825] text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      soundMode === 'binaural' ? 'bg-[#ffd64d] text-[#282825] shadow-[3px_3px_0_#282825]' : 'bg-white text-[#5f5f59] shadow-[2px_2px_0_#282825]'
+                    }`}
                   >
-                    <Sparkles className="w-4 h-4 text-amber-400" /> موجات ألفا
+                    <Sparkles className="w-4 h-4 text-[#ff5636]" /> موجات ألفا
                   </button>
                   <button
                     onClick={() => handleSoundToggle('hum')}
-                    className={`py-3 rounded-2xl text-xs font-medium border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${soundMode === 'hum' ? 'liquid-glass-glow text-cyan-300 border-cyan-400/40' : 'liquid-glass text-muted-foreground'}`}
+                    className={`py-3 rounded-xl border-2 border-[#282825] text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      soundMode === 'hum' ? 'bg-[#cce6b4] text-[#282825] shadow-[3px_3px_0_#282825]' : 'bg-white text-[#5f5f59] shadow-[2px_2px_0_#282825]'
+                    }`}
                   >
-                    <Coffee className="w-4 h-4 text-emerald-400" /> مقهى هادئ
+                    <Coffee className="w-4 h-4 text-[#ff5636]" /> مقهى هادئ
                   </button>
                 </div>
               </div>
             </div>
 
             {/* CHAT PANEL */}
-            <div className="lg:col-span-5 liquid-glass-glow rounded-3xl p-6 border border-white/15 flex flex-col h-[500px] justify-between">
-              <h3 className="text-2xl font-display text-foreground border-b border-white/10 pb-3 mb-3 flex items-center gap-2">
-                شات الطلاب المباشر <MessageSquare className="w-5 h-5 text-cyan-300" />
+            <div className="lg:col-span-5 rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] flex flex-col h-[500px] justify-between">
+              <h3 className="text-xl font-black text-[#282825] border-b-2 border-[#282825]/10 pb-3 mb-3 flex items-center justify-between">
+                <span>شات الطلاب المباشر</span>
+                <MessageSquare className="w-5 h-5 text-[#ff5636]" />
               </h3>
 
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {chatMessages.map((msg) => (
-                  <div key={msg.id} className="liquid-glass rounded-2xl p-3 border border-white/5 text-xs space-y-1">
-                    <div className="flex justify-between items-center text-[10px] text-cyan-300 font-medium">
-                      <span>{msg.users?.full_name || 'طالب'}</span>
-                      <span className="text-muted-foreground">{new Date(msg.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div key={msg.id} className="rounded-xl border border-[#282825]/20 bg-[#fafaf7] p-3 text-xs space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-black text-[#282825]">
+                      <span>{msg.users?.full_name || 'طالب مسار'}</span>
+                      <span className="text-[#77776f] font-normal">{new Date(msg.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
-                    <p className="text-foreground leading-relaxed">{msg.message}</p>
+                    <p className="text-[#282825] font-semibold leading-relaxed">{msg.message}</p>
                   </div>
                 ))}
                 <div ref={chatEndRef} />
               </div>
 
-              <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t border-white/10">
+              <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t-2 border-[#282825]/10">
                 <input
                   type="text"
                   required
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   placeholder="اكتب استفسارك هنا..."
-                  className="flex-1 liquid-glass rounded-2xl px-4 py-2.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none"
+                  className="flex-1 rounded-xl border-2 border-[#282825] bg-white px-4 py-2.5 text-xs font-semibold text-[#282825] placeholder-[#77776f] shadow-[2px_2px_0_#282825] focus:outline-none focus:border-[#ff5636]"
                 />
                 <button
                   type="submit"
-                  className="liquid-glass-glow rounded-2xl px-5 py-2.5 text-xs font-medium text-foreground hover:scale-105 transition-transform border border-cyan-400/40"
+                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-5 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all"
                 >
                   إرسال
                 </button>
@@ -422,7 +438,7 @@ export default function StudyRoomsPage() {
           </div>
         )}
 
-      </div>
+      </main>
     </SidebarLayout>
   );
 }

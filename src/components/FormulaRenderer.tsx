@@ -39,7 +39,7 @@ export default function FormulaRenderer({ formula, displayMode = false, classNam
   if (displayMode) {
     return (
       <div
-        className={`flex justify-center items-center my-4 p-4 rounded-2xl bg-surface border-2 border-border-color shadow-xs overflow-x-auto text-foreground dir-ltr ${className}`}
+        className={`flex justify-center items-center my-4 p-4 rounded-2xl bg-white border-2 border-[#282825] shadow-[3px_3px_0_#282825] overflow-x-auto text-[#282825] dir-ltr ${className}`}
         dir="ltr"
         dangerouslySetInnerHTML={{ __html: htmlContent }}
       />
@@ -48,7 +48,7 @@ export default function FormulaRenderer({ formula, displayMode = false, classNam
 
   return (
     <span
-      className={`inline-flex items-center mx-1 font-bold text-foreground dir-ltr ${className}`}
+      className={`inline-flex items-center mx-1 font-bold text-[#282825] dir-ltr ${className}`}
       dir="ltr"
       dangerouslySetInnerHTML={{ __html: htmlContent }}
     />
@@ -56,21 +56,16 @@ export default function FormulaRenderer({ formula, displayMode = false, classNam
 }
 
 /**
- * MathText Component: Safely renders text with embedded LaTeX formulas (e.g. `\sqrt{l}` or `\dfrac{a}{b}`).
- * Splits LaTeX parts from plain text so Arabic text and numbers render perfectly.
+ * MathText Component: Safely renders text with embedded LaTeX formulas ($...$, $$...$$, \(...\), \[...\], or raw \command).
  */
 export function MathText({ text, className = '' }: { text: string; className?: string }) {
   const parts = useMemo(() => {
     if (!text) return [];
 
-    // If text starts with LaTeX command like \dfrac, \vec, \int, \sqrt, render as single formula
-    if (/^\s*\\[a-zA-Z]+/.test(text)) {
-      return [{ type: 'formula', value: text }];
-    }
+    // Match $...$, $$...$$, \(...\), \[...\], or raw \command sequences
+    const regex = /(\$\$[\s\S]+?\$\$|\$[^\$]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\\(?:dfrac|frac|sqrt|vec|int|sum|lim|alpha|beta|theta|pi|Delta|Omega|cdot|times|le|ge|neq|approx|infty|cos|sin|tan|log|ln)(?:\{[^}]*\}|\[[^\]]*\])*)/g;
 
-    // Split text by LaTeX patterns: \command{...} or \command
-    const regex = /(\\[a-zA-Z]+(?:\{[^}]*\}|\[[^\]]*\])*)/g;
-    const result: Array<{ type: 'text' | 'formula'; value: string }> = [];
+    const result: Array<{ type: 'text' | 'formula'; value: string; displayMode?: boolean }> = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 
@@ -78,12 +73,32 @@ export function MathText({ text, className = '' }: { text: string; className?: s
       if (match.index > lastIndex) {
         result.push({ type: 'text', value: text.substring(lastIndex, match.index) });
       }
-      result.push({ type: 'formula', value: match[0] });
+      let rawVal = match[0];
+      let displayMode = false;
+
+      if (rawVal.startsWith('$$') && rawVal.endsWith('$$')) {
+        rawVal = rawVal.slice(2, -2);
+        displayMode = true;
+      } else if (rawVal.startsWith('$') && rawVal.endsWith('$')) {
+        rawVal = rawVal.slice(1, -1);
+      } else if (rawVal.startsWith('\\[') && rawVal.endsWith('\\]')) {
+        rawVal = rawVal.slice(2, -2);
+        displayMode = true;
+      } else if (rawVal.startsWith('\\(') && rawVal.endsWith('\\)')) {
+        rawVal = rawVal.slice(2, -2);
+      }
+
+      result.push({ type: 'formula', value: rawVal, displayMode });
       lastIndex = regex.lastIndex;
     }
 
     if (lastIndex < text.length) {
       result.push({ type: 'text', value: text.substring(lastIndex) });
+    }
+
+    // Fallback: If no delimiter match was found but text starts with a backslash command
+    if (result.length === 1 && result[0].type === 'text' && /^\s*\\[a-zA-Z]+/.test(text)) {
+      return [{ type: 'formula', value: text, displayMode: false }];
     }
 
     return result;
@@ -95,7 +110,7 @@ export function MathText({ text, className = '' }: { text: string; className?: s
     <span className={className}>
       {parts.map((part, idx) =>
         part.type === 'formula' ? (
-          <FormulaRenderer key={idx} formula={part.value} displayMode={false} />
+          <FormulaRenderer key={idx} formula={part.value} displayMode={part.displayMode} />
         ) : (
           <span key={idx}>{part.value}</span>
         )
