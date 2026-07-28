@@ -182,7 +182,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
         </aside>
 
         {/* MAIN SHELL */}
-        <section className="flex min-w-0 flex-1 flex-col pb-20 lg:pb-0">
+        <section className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex min-h-[76px] items-center gap-3 border-b border-[#d6d4cd] bg-[#fafaf7]/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
             <button onClick={() => setMenuOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#282825] bg-white lg:hidden" aria-label="فتح القائمة"><Menu className="h-5 w-5" /></button>
             <Link href="/dashboard" className="flex items-center gap-2 lg:hidden">
@@ -210,55 +210,6 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
           <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
         </section>
       </div>
-
-      {/* MOBILE BOTTOM QUICK NAVIGATION BAR */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t-2 border-[#282825] bg-[#fafaf7]/95 p-2 backdrop-blur-xl lg:hidden shadow-[0_-4px_16px_rgba(0,0,0,0.08)]" aria-label="شريط الوصول السريع">
-        <Link
-          href="/dashboard"
-          className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-            itemIsActive('/dashboard') ? 'bg-[#ff5636] text-white shadow-sm' : 'text-[#5f5f59] hover:bg-[#eeeDE7]'
-          }`}
-        >
-          <Home className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px]">الرئيسية</span>
-        </Link>
-
-        <Link
-          href="/subjects"
-          className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-            itemIsActive('/subjects') ? 'bg-[#ff5636] text-white shadow-sm' : 'text-[#5f5f59] hover:bg-[#eeeDE7]'
-          }`}
-        >
-          <FolderOpen className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px]">المواد</span>
-        </Link>
-
-        <button
-          onClick={() => setAiOpen(true)}
-          className="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#ffd64d] text-[#282825] border-2 border-[#282825] shadow-[2px_2px_0_#282825] -translate-y-2 hover:scale-105 transition-transform"
-        >
-          <Bot className="w-5 h-5 mb-0.5 text-[#ff5636]" />
-          <span className="text-[10px] font-black">الرفيق</span>
-        </button>
-
-        <Link
-          href="/dashboard/exams"
-          className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-            itemIsActive('/dashboard/exams') ? 'bg-[#ff5636] text-white shadow-sm' : 'text-[#5f5f59] hover:bg-[#eeeDE7]'
-          }`}
-        >
-          <FileCheck2 className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px]">الاختبارات</span>
-        </Link>
-
-        <button
-          onClick={() => setMenuOpen(true)}
-          className="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold text-[#5f5f59] hover:bg-[#eeeDE7] transition-all"
-        >
-          <Menu className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px]">القائمة</span>
-        </button>
-      </nav>
 
       {/* SIMPLIFIED MOBILE DRAWER */}
       {menuOpen && (
