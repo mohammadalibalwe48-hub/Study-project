@@ -21,8 +21,11 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
+  Database,
+  Wifi,
 } from 'lucide-react';
 import { INITIAL_LIVE_ROOMS, LiveRoom } from '@/data/liveRoomsData';
+import { supabase } from '@/utils/supabase/client';
 
 interface Participant {
   id: string;
@@ -37,7 +40,7 @@ interface Participant {
 export default function ActiveLiveRoomPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { profile, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
 
   // Find room details from dataset or fallback
   const roomData: LiveRoom = INITIAL_LIVE_ROOMS.find((r) => r.id === id) || {
@@ -48,8 +51,8 @@ export default function ActiveLiveRoomPage() {
     isTutorSession: true,
     activeCount: 5,
     maxCount: 30,
-    tags: ['بث مباشر', 'تفاعلي'],
-    description: 'غرفة بث وم مذاكرة تفاعلية سريعة لطلاب البكالوريا السورية.',
+    tags: ['بث مباشر', 'Supabase Realtime'],
+    description: 'غرفة بث ومذاكرة تفاعلية حية متصلة بقاعدة بيانات وخادومات Supabase Realtime.',
     createdAt: 'الآن',
   };
 
@@ -59,6 +62,7 @@ export default function ActiveLiveRoomPage() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants' | 'whiteboard'>('chat');
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
 
   // Media Stream References
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -67,6 +71,9 @@ export default function ActiveLiveRoomPage() {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
 
+  // Supabase Realtime Channel Reference
+  const channelRef = useRef<any>(null);
+
   // Live Chat State
   const [chatMessages, setChatMessages] = useState<
     { id: string; sender: string; text: string; time: string; isHost?: boolean }[]
@@ -74,28 +81,22 @@ export default function ActiveLiveRoomPage() {
     {
       id: '1',
       sender: 'أ. عصام الحلاق',
-      text: 'أهلاً بكم يا أبطال في البث المباشر! اكتبوا أي سؤال تريدون مناقشته في الشات 🎙️',
+      text: 'أهلاً بكم يا أبطال في البث المباشر المتصل بـ Supabase! 🎙️',
       time: '10:00 ص',
       isHost: true,
-    },
-    {
-      id: '2',
-      sender: 'خالد (علمي)',
-      text: 'استاذ ممكن نعيد القانون الرئيسي في المسألة الثانية؟',
-      time: '10:02 ص',
     },
   ]);
   const [chatInput, setChatInput] = useState('');
 
   // Whiteboard Notes State
   const [boardNotes, setBoardNotes] = useState(
-    `📌 ملاحظات الجلسة المباشرة:\n1. قانون النواس الثقيل: T_0 = 2\\pi \\sqrt{\\dfrac{I_{\\Delta}}{m \\cdot g \\cdot d}}\n2. انتبه لحساب العزم I_{\\Delta} بالوحدات الدولية (kg.m^2)`
+    `📌 ملاحظات الجلسة المباشرة (متزامنة لحظياً عبر Supabase Realtime):\n1. قانون النواس الثقيل: T_0 = 2\\pi \\sqrt{\\dfrac{I_{\\Delta}}{m \\cdot g \\cdot d}}\n2. انتبه لحساب العزم I_{\\Delta} بالوحدات الدولية (kg.m^2)`
   );
 
-  // Participants Mock State
+  // Participants List
   const [participants, setParticipants] = useState<Participant[]>([
     {
-      id: 'user-me',
+      id: user?.id || 'me-local',
       name: profile?.full_name || 'أنت (طالب مسار)',
       isHost: false,
       isMuted: !isMicOn,
@@ -110,25 +111,116 @@ export default function ActiveLiveRoomPage() {
       isVideoOn: true,
       handRaised: false,
     },
-    {
-      id: 'student-2',
-      name: 'سامي الجراح (علمي)',
-      isHost: false,
-      isMuted: true,
-      isVideoOn: true,
-      handRaised: true,
-    },
-    {
-      id: 'student-3',
-      name: 'نور الهدى (أدبي)',
-      isHost: false,
-      isMuted: true,
-      isVideoOn: false,
-      handRaised: false,
-    },
   ]);
 
-  // Handle Local WebRTC Camera & Microphone Access
+  // 1. Supabase Realtime Integration (Presence & Broadcast)
+  useEffect(() => {
+    const roomIdStr = id || 'global-room';
+    const channel = supabase.channel(`live_room_${roomIdStr}`, {
+      config: {
+        presence: { key: user?.id || `anon-${Math.random()}` },
+        broadcast: { self: false },
+      },
+    });
+
+    channelRef.current = channel;
+
+    // Presence Sync Handler
+    channel.on('presence', { event: 'sync' }, () => {
+      const presenceState = channel.presenceState();
+      const onlineUsers: Participant[] = [];
+
+      Object.keys(presenceState).forEach((key) => {
+        const presences = presenceState[key] as any[];
+        if (presences && presences.length > 0) {
+          const info = presences[0];
+          onlineUsers.push({
+            id: key,
+            name: info.full_name || 'طالب مسار',
+            isHost: info.isHost || false,
+            isMuted: info.isMuted ?? false,
+            isVideoOn: info.isVideoOn ?? true,
+            handRaised: info.handRaised ?? false,
+          });
+        }
+      });
+
+      if (onlineUsers.length > 0) {
+        setParticipants(onlineUsers);
+      }
+    });
+
+    // Broadcast Handlers (Chat, State, Whiteboard)
+    channel.on('broadcast', { event: 'chat_message' }, (payload) => {
+      if (payload?.payload) {
+        setChatMessages((prev) => [...prev, payload.payload]);
+      }
+    });
+
+    channel.on('broadcast', { event: 'whiteboard_update' }, (payload) => {
+      if (payload?.payload?.text !== undefined) {
+        setBoardNotes(payload.payload.text);
+      }
+    });
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        setIsSupabaseConnected(true);
+        // Track presence
+        channel.track({
+          full_name: profile?.full_name || 'طالب مسار',
+          isHost: profile?.role === 'admin',
+          isMuted: !isMicOn,
+          isVideoOn: isCamOn,
+          handRaised: handRaised,
+        });
+      }
+    });
+
+    // Fetch initial chat history from Supabase if subject/messages exist
+    async function loadSupabaseRoomMessages() {
+      try {
+        const { data, error } = await supabase
+          .from('room_messages')
+          .select('id, message, created_at, users(full_name)')
+          .order('created_at', { ascending: true })
+          .limit(20);
+
+        if (!error && data && data.length > 0) {
+          const formatted = data.map((m: any) => ({
+            id: String(m.id),
+            sender: m.users?.full_name || 'طالب مسار',
+            text: m.message,
+            time: new Date(m.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
+          }));
+          setChatMessages((prev) => [...prev, ...formatted]);
+        }
+      } catch (err) {
+        console.warn('Supabase chat load info:', err);
+      }
+    }
+
+    loadSupabaseRoomMessages();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, user, profile]);
+
+  // 2. Sync Local State Changes to Supabase Presence
+  useEffect(() => {
+    if (channelRef.current && isSupabaseConnected) {
+      channelRef.current.track({
+        full_name: profile?.full_name || 'طالب مسار',
+        isHost: profile?.role === 'admin',
+        isMuted: !isMicOn,
+        isVideoOn: isCamOn,
+        handRaised: handRaised,
+      });
+    }
+  }, [isMicOn, isCamOn, handRaised, isSupabaseConnected, profile]);
+
+  // 3. WebRTC Local Camera & Microphone Access
   useEffect(() => {
     async function startCamera() {
       try {
@@ -139,8 +231,8 @@ export default function ActiveLiveRoomPage() {
           localVideoRef.current.srcObject = stream;
         }
       } catch (err) {
-        console.warn('Camera/Mic permission denied or not available:', err);
-        setMediaError('لم يتم منح الإذن للكاميرا أو الميكروفون، يمكنك المتابعة بالصوت أو النص.');
+        console.warn('Camera/Mic access info:', err);
+        setMediaError('لم يتم إتاحة الكاميرا أو الميكروفون حالياً، يمكنك المتابعة بالمحادثة والنص مباشرة.');
         setIsCamOn(false);
       }
     }
@@ -199,13 +291,13 @@ export default function ActiveLiveRoomPage() {
           setIsScreenSharing(false);
         };
       } catch (err) {
-        console.warn('Screen sharing cancelled:', err);
+        console.warn('Screen sharing info:', err);
       }
     }
   }
 
-  // Send Chat Message
-  function handleSendMessage(e: React.FormEvent) {
+  // Handle Send Chat Message (Persists to Supabase & Realtime Broadcast)
+  async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
@@ -218,6 +310,40 @@ export default function ActiveLiveRoomPage() {
 
     setChatMessages((prev) => [...prev, newMsg]);
     setChatInput('');
+
+    // 1. Broadcast via Supabase Realtime
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'chat_message',
+        payload: newMsg,
+      });
+    }
+
+    // 2. Persist to Supabase Database table `room_messages`
+    try {
+      if (user?.id) {
+        await supabase.from('room_messages').insert({
+          message: newMsg.text,
+          user_id: user.id,
+          subject_id: 1, // Fallback subject ID
+        });
+      }
+    } catch (err) {
+      console.warn('Supabase DB message save info:', err);
+    }
+  }
+
+  // Handle Whiteboard Change (Broadcasts via Supabase Realtime)
+  function handleWhiteboardChange(val: string) {
+    setBoardNotes(val);
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'whiteboard_update',
+        payload: { text: val },
+      });
+    }
   }
 
   return (
@@ -240,8 +366,8 @@ export default function ActiveLiveRoomPage() {
 
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-[#cce6b4] text-[#15803d] border-2 border-[#282825] shadow-[1.5px_1.5px_0_#282825]">
-              <Users className="w-3.5 h-3.5" />
-              <span>{participants.length} مشارك متصل</span>
+              <Wifi className="w-3.5 h-3.5 text-[#15803d] animate-pulse" />
+              <span>Supabase Realtime ({participants.length} متصل)</span>
             </span>
 
             <button
@@ -452,7 +578,7 @@ export default function ActiveLiveRoomPage() {
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="اكتب رسالة للبث..."
+                    placeholder="اكتب رسالة لحظية عبر Supabase..."
                     className="w-full rounded-xl border-2 border-[#282825] bg-[#fafaf7] p-2.5 text-xs font-semibold placeholder-[#77776f] focus:outline-none focus:border-[#ff5636]"
                   />
                   <button
@@ -498,13 +624,13 @@ export default function ActiveLiveRoomPage() {
             {activeTab === 'whiteboard' && (
               <div className="flex-1 flex flex-col space-y-2">
                 <span className="text-xs font-black text-[#282825] flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-[#ff5636]" /> سبورة وملاحظات الجلسة المباشرة
+                  <Sparkles className="w-4 h-4 text-[#ff5636]" /> سبورة وملاحظات الجلسة (مزامنة Supabase)
                 </span>
                 <textarea
                   rows={15}
                   value={boardNotes}
-                  onChange={(e) => setBoardNotes(e.target.value)}
-                  placeholder="اكتب قوانين وملاحظات الجلسة هنا..."
+                  onChange={(e) => handleWhiteboardChange(e.target.value)}
+                  placeholder="اكتب قوانين وملاحظات الجلسة وتتزامن مع الجميع مباشرة..."
                   className="w-full flex-1 rounded-2xl border-2 border-[#282825] bg-[#bce9fa]/20 p-4 text-xs font-semibold text-[#282825] leading-relaxed shadow-[2.5px_2.5px_0_#282825] focus:outline-none"
                 />
               </div>

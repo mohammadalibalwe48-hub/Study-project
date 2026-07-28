@@ -1,20 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SidebarLayout from '@/components/SidebarLayout';
 import { useAuth } from '@/context/AuthContext';
 import LiveRoomCard from '@/components/LiveRoomCard';
 import { INITIAL_LIVE_ROOMS, LiveRoom } from '@/data/liveRoomsData';
-import { Radio, Plus, Search, Filter, Video, Mic, Sparkles, X, Check } from 'lucide-react';
+import { Radio, Plus, Search, Video, Mic, X, Check, Database, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-
-const SUBJECT_OPTIONS = ['الكل', 'الفيزياء', 'الكيمياء', 'الرياضيات', 'اللغة العربية', 'اللغة الإنكليزية', 'العلوم العامة'];
+import { supabase } from '@/utils/supabase/client';
 
 export default function LiveRoomsLobbyPage() {
-  const { profile, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const router = useRouter();
 
   const [rooms, setRooms] = useState<LiveRoom[]>(INITIAL_LIVE_ROOMS);
+  const [subjectsList, setSubjectsList] = useState<string[]>(['الكل', 'الفيزياء', 'الكيمياء', 'الرياضيات', 'اللغة العربية', 'اللغة الإنكليزية', 'العلوم العامة']);
   const [selectedSubject, setSelectedSubject] = useState('الكل');
   const [searchQuery, setSearchQuery] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -24,6 +24,48 @@ export default function LiveRoomsLobbyPage() {
   const [newSubject, setNewSubject] = useState('الفيزياء');
   const [newIsTutorSession, setNewIsTutorSession] = useState(false);
   const [newDescription, setNewDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 1. Fetch Subjects from Supabase
+  useEffect(() => {
+    async function loadSupabaseSubjects() {
+      try {
+        const { data, error } = await supabase.from('subjects').select('name, title, name_ar').order('id', { ascending: true });
+        if (!error && data && data.length > 0) {
+          const names = data.map((s) => s.title || s.name_ar || s.name).filter(Boolean);
+          if (names.length > 0) {
+            setSubjectsList(['الكل', ...names]);
+            setNewSubject(names[0]);
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase subjects load fallback:', err);
+      }
+    }
+    loadSupabaseSubjects();
+  }, []);
+
+  // 2. Subscribe to Supabase Realtime Channel for Lobby Rooms Sync
+  useEffect(() => {
+    const channel = supabase.channel('live_rooms_lobby', {
+      config: { broadcast: { self: true } }
+    });
+
+    channel.on('broadcast', { event: 'new_room_created' }, (payload) => {
+      if (payload?.payload?.room) {
+        setRooms((prev) => {
+          if (prev.some((r) => r.id === payload.payload.room.id)) return prev;
+          return [payload.payload.room, ...prev];
+        });
+      }
+    });
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const filteredRooms = rooms.filter((r) => {
     const matchSubject = selectedSubject === 'الكل' || r.subject === selectedSubject;
@@ -31,45 +73,67 @@ export default function LiveRoomsLobbyPage() {
     return matchSubject && matchSearch;
   });
 
-  function handleCreateRoom(e: React.FormEvent) {
+  async function handleCreateRoom(e: React.FormEvent) {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || isSubmitting) return;
 
+    setIsSubmitting(true);
     const roomId = `room-${Date.now()}`;
     const newRoomObj: LiveRoom = {
       id: roomId,
       title: newTitle.trim(),
       subject: newSubject,
       hostName: profile?.full_name || 'طالب مسار',
-      isTutorSession: newIsTutorSession,
+      isTutorSession: newIsTutorSession || profile?.role === 'admin',
       activeCount: 1,
       maxCount: newIsTutorSession ? 50 : 12,
-      tags: ['مباشر الان'],
-      description: newDescription.trim() || 'غرفة مذاكرة وبث مباشر جديدة.',
+      tags: ['مباشر الان', 'Supabase Realtime'],
+      description: newDescription.trim() || 'غرفة بث ومذاكرة تفاعلية متصلة عبر قاعدة بيانات Supabase Realtime.',
       createdAt: 'الآن',
     };
 
-    setRooms((prev) => [newRoomObj, ...prev]);
-    setCreateModalOpen(false);
-    router.push(`/live-rooms/${roomId}`);
+    try {
+      // Broadcast via Supabase Realtime
+      const channel = supabase.channel('live_rooms_lobby');
+      await channel.send({
+        type: 'broadcast',
+        event: 'new_room_created',
+        payload: { room: newRoomObj },
+      });
+    } catch (err) {
+      console.warn('Realtime room broadcast info:', err);
+    } finally {
+      setRooms((prev) => [newRoomObj, ...prev]);
+      setIsSubmitting(false);
+      setCreateModalOpen(false);
+      router.push(`/live-rooms/${roomId}`);
+    }
   }
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <div className="space-y-8" dir="rtl">
+      <div className="space-y-8 text-right" dir="rtl">
         
         {/* Banner Section */}
-        <header className="rounded-3xl border-2 border-[#282825] bg-[#ffd64d] p-6 sm:p-8 shadow-[6px_6px_0_#282825] flex flex-col md:flex-row md:items-center justify-between gap-6 text-right">
+        <header className="rounded-3xl border-2 border-[#282825] bg-[#ffd64d] p-6 sm:p-8 shadow-[6px_6px_0_#282825] flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-[#ff5636] text-white border-2 border-[#282825] shadow-[1.5px_1.5px_0_#282825]">
-              <Radio className="w-4 h-4 animate-pulse" />
-              <span>غرف البث والدردشة الصوتيّة والمرئية 🎙️📹</span>
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-[#ff5636] text-white border-2 border-[#282825] shadow-[1.5px_1.5px_0_#282825]">
+                <Radio className="w-4 h-4 animate-pulse" />
+                <span>غرف البث التفاعلي المباشر 🎙️📹</span>
+              </span>
+
+              <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-white text-[#282825] border-2 border-[#282825]">
+                <Database className="w-3.5 h-3.5 text-[#ff5636]" />
+                <span>Supabase Realtime Sync ⚡</span>
+              </span>
+            </div>
+
             <h1 className="text-2xl sm:text-3xl font-black text-[#282825]">
-              غرف البث والمذاكرة التفاعلية المباشرة
+              غرف البث والمذاكرة الجماعية الصوتية والمرئية
             </h1>
             <p className="text-xs sm:text-sm font-bold text-[#282825]/80 max-w-2xl leading-relaxed">
-              انضم لغرف البث الصوتي والمرئي المباشر، شارك ميكروفونك وكاميرتك مع زملائك والمدرسين، واطرح أسئلتك في الوقت الفعلي!
+              تفاعل مباشرة مع زملائك والمدرسين صوتياً ومرئياً مع مزامنة لحظية وحقيقية عبر قنوات Supabase Realtime.
             </p>
           </div>
 
@@ -87,7 +151,7 @@ export default function LiveRoomsLobbyPage() {
           
           {/* Subject Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {SUBJECT_OPTIONS.map((sub) => (
+            {subjectsList.map((sub) => (
               <button
                 key={sub}
                 onClick={() => setSelectedSubject(sub)}
@@ -126,7 +190,7 @@ export default function LiveRoomsLobbyPage() {
           <div className="py-16 text-center rounded-3xl border-2 border-dashed border-[#282825] bg-white p-8 space-y-3">
             <Radio className="w-10 h-10 text-[#ff5636] mx-auto opacity-50" />
             <h3 className="text-base font-black text-[#282825]">لا توجد غرف بث متاحة حالياً بهذه المواصفات</h3>
-            <p className="text-xs font-bold text-[#5f5f59]">كن الأول وابدأ غرفة مذاكرة جديدة الآن!</p>
+            <p className="text-xs font-bold text-[#5f5f59]">أنشئ غرفتك الآن وستظهر لجميع الطلاب المتصلين بنفس اللحظة عبر Supabase!</p>
             <button
               onClick={() => setCreateModalOpen(true)}
               className="app-button border-2 border-[#282825] bg-[#ffd64d] text-[#282825] px-5 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer inline-flex items-center gap-1.5 mt-2"
@@ -149,7 +213,10 @@ export default function LiveRoomsLobbyPage() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-[#282825] bg-[#ffd64d] shadow-[2px_2px_0_#282825]">
                   <Video className="w-5 h-5 text-[#ff5636]" />
                 </span>
-                <h2 className="text-lg font-black text-[#282825]">إنشاء غرفة بث تفاعلية جديدة</h2>
+                <div>
+                  <h2 className="text-lg font-black text-[#282825]">إنشاء غرفة بث تفاعلية مباشرة</h2>
+                  <small className="text-[11px] font-bold text-[#5f5f59]">مربوطة بقاعدة بيانات Supabase Realtime</small>
+                </div>
               </div>
               <button
                 onClick={() => setCreateModalOpen(false)}
@@ -180,7 +247,7 @@ export default function LiveRoomsLobbyPage() {
                     onChange={(e) => setNewSubject(e.target.value)}
                     className="w-full rounded-xl border-2 border-[#282825] bg-white p-3 text-xs font-semibold shadow-[2px_2px_0_#282825] focus:outline-none"
                   >
-                    {SUBJECT_OPTIONS.filter((s) => s !== 'الكل').map((sub) => (
+                    {subjectsList.filter((s) => s !== 'الكل').map((sub) => (
                       <option key={sub} value={sub}>{sub}</option>
                     ))}
                   </select>
@@ -220,10 +287,11 @@ export default function LiveRoomsLobbyPage() {
                 </button>
                 <button
                   type="submit"
-                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-6 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-6 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Check className="w-4 h-4 stroke-[3px]" />
-                  <span>انطلق الآن 🚀</span>
+                  <span>{isSubmitting ? 'جاري الربط...' : 'انطلق الآن 🚀'}</span>
                 </button>
               </div>
             </form>
