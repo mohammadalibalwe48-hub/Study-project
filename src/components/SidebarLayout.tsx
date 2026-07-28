@@ -22,6 +22,7 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  Radio,
   Search,
   Send,
   Settings,
@@ -57,6 +58,7 @@ const navigation: NavigationItem[] = [
   { label: 'الاختبارات', href: '/dashboard/exams', icon: FileCheck2, group: 'core' },
   { label: 'المخطط', href: '/dashboard/planner', icon: CalendarDays, group: 'core' },
   
+  { label: 'البث المباشر', href: '/live-rooms', icon: Radio, group: 'tools' },
   { label: 'التحليلات', href: '/dashboard/analytics', icon: ChartNoAxesColumnIncreasing, group: 'tools' },
   { label: 'البطاقات', href: '/dashboard/flashcards', icon: Grid2X2, group: 'tools' },
   { label: 'المحفوظات', href: '/dashboard/bookmarks', icon: Bookmark, group: 'tools' },
