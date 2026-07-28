@@ -12,7 +12,6 @@ import {
   CalendarDays,
   ChartNoAxesColumnIncreasing,
   CircleHelp,
-  Clock,
   FileCheck2,
   FolderOpen,
   GraduationCap,
@@ -32,7 +31,7 @@ import {
   UserCheck,
   UserRound,
   X,
-  Zap,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -40,6 +39,7 @@ type NavigationItem = {
   label: string;
   href: string;
   icon: typeof Home;
+  group?: 'core' | 'tools' | 'community';
   adminOnly?: boolean;
 };
 
@@ -51,21 +51,31 @@ interface SidebarLayoutProps {
   signOut: () => Promise<void>;
 }
 
-function NavigationLinks({
-  items,
-  pathname,
-  mobile = false,
-  onNavigate,
-}: {
-  items: NavigationItem[];
-  pathname: string;
-  mobile?: boolean;
-  onNavigate?: () => void;
-}) {
+const navigation: NavigationItem[] = [
+  { label: 'الرئيسية', href: '/dashboard', icon: Home, group: 'core' },
+  { label: 'المواد', href: '/subjects', icon: FolderOpen, group: 'core' },
+  { label: 'الاختبارات', href: '/dashboard/exams', icon: FileCheck2, group: 'core' },
+  { label: 'المخطط', href: '/dashboard/planner', icon: CalendarDays, group: 'core' },
+  
+  { label: 'التحليلات', href: '/dashboard/analytics', icon: ChartNoAxesColumnIncreasing, group: 'tools' },
+  { label: 'البطاقات', href: '/dashboard/flashcards', icon: Grid2X2, group: 'tools' },
+  { label: 'المحفوظات', href: '/dashboard/bookmarks', icon: Bookmark, group: 'tools' },
+  { label: 'المكتبة', href: '/library', icon: Library, group: 'tools' },
+
+  { label: 'المدرسون', href: '/mentors', icon: UserCheck, group: 'community' },
+  { label: 'المجتمع', href: '/forum', icon: MessageCircle, group: 'community' },
+  { label: 'الصدارة والأوائل', href: '/leaderboard', icon: Trophy, group: 'community' },
+  { label: 'الملف الشخصي', href: '/profile', icon: UserRound, group: 'community' },
+  { label: 'الدعم الفني', href: '/support', icon: CircleHelp, group: 'community' },
+  { label: 'باقات الاشتراك', href: '/pricing', icon: Sparkles, group: 'community' },
+  { label: 'الإدارة', href: '/admin', icon: ShieldCheck, adminOnly: true },
+];
+
+function DesktopNavigation({ items, pathname }: { items: NavigationItem[]; pathname: string }) {
   const itemIsActive = (href: string) => href === '/dashboard' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className={mobile ? 'grid gap-2' : 'flex flex-1 flex-col items-center gap-2 py-3 overflow-y-auto max-h-[calc(100vh-220px)] w-full px-1 scrollbar-none'} aria-label="التنقل الرئيسي">
+    <nav className="flex flex-1 flex-col items-center gap-2 py-3 overflow-y-auto max-h-[calc(100vh-220px)] w-full px-1 scrollbar-none" aria-label="التنقل الرئيسي">
       {items.map((item) => {
         const Icon = item.icon;
         const active = itemIsActive(item.href);
@@ -73,47 +83,24 @@ function NavigationLinks({
           <Link
             key={item.href}
             href={item.href}
-            onClick={onNavigate}
             aria-current={active ? 'page' : undefined}
             title={item.label}
-            className={
-              mobile
-                ? `flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-bold transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-sm' : 'border-transparent bg-[#f1f0eb] text-[#171714] hover:bg-[#e4e2d9]'}`
-                : `group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${active ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md' : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'}`
-            }
+            className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
+              active
+                ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md'
+                : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'
+            }`}
           >
             <Icon className="h-[19px] w-[19px]" strokeWidth={2} />
-            {mobile && <span>{item.label}</span>}
-            {!mobile && (
-              <span className="pointer-events-none absolute right-[calc(100%+12px)] z-30 hidden whitespace-nowrap rounded-lg border border-[#282825] bg-[#282825] px-3 py-1.5 text-xs font-bold text-white shadow-xl group-hover:block">
-                {item.label}
-              </span>
-            )}
+            <span className="pointer-events-none absolute right-[calc(100%+12px)] z-30 hidden whitespace-nowrap rounded-lg border border-[#282825] bg-[#282825] px-3 py-1.5 text-xs font-bold text-white shadow-xl group-hover:block">
+              {item.label}
+            </span>
           </Link>
         );
       })}
     </nav>
   );
 }
-
-const navigation: NavigationItem[] = [
-  { label: 'الرئيسية', href: '/dashboard', icon: Home },
-  { label: 'المواد', href: '/subjects', icon: FolderOpen },
-  { label: 'الاختبارات', href: '/dashboard/exams', icon: FileCheck2 },
-  { label: 'المخطط', href: '/dashboard/planner', icon: CalendarDays },
-  { label: 'التحليلات', href: '/dashboard/analytics', icon: ChartNoAxesColumnIncreasing },
-  { label: 'البطاقات', href: '/dashboard/flashcards', icon: Grid2X2 },
-  { label: 'المحفوظات', href: '/dashboard/bookmarks', icon: Bookmark },
-  { label: 'غرف التركيز', href: '/dashboard/study-rooms', icon: Clock },
-  { label: 'المدرسون', href: '/mentors', icon: UserCheck },
-  { label: 'المكتبة', href: '/library', icon: Library },
-  { label: 'المجتمع', href: '/forum', icon: MessageCircle },
-  { label: 'الصدارة والأوائل', href: '/leaderboard', icon: Trophy },
-  { label: 'الملف الشخصي', href: '/profile', icon: UserRound },
-  { label: 'الدعم الفني', href: '/support', icon: CircleHelp },
-  { label: 'باقات الاشتراك', href: '/pricing', icon: Sparkles },
-  { label: 'الإدارة', href: '/admin', icon: ShieldCheck, adminOnly: true },
-];
 
 export default function SidebarLayout({ children, role, signOut }: SidebarLayoutProps) {
   const { profile } = useAuth();
@@ -137,6 +124,12 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   }, [messages, isTyping]);
 
   const visibleNavigation = navigation.filter((item) => !item.adminOnly || role === 'admin');
+
+  const coreItems = visibleNavigation.filter((i) => i.group === 'core');
+  const toolItems = visibleNavigation.filter((i) => i.group === 'tools');
+  const communityItems = visibleNavigation.filter((i) => i.group === 'community' || !i.group);
+
+  const itemIsActive = (href: string) => href === '/dashboard' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
   async function askAI(event: FormEvent) {
     event.preventDefault();
@@ -169,13 +162,14 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   return (
     <div className="min-h-screen bg-[#b9ced8] p-0 text-[#171714] lg:p-6 xl:p-8" dir="rtl">
       <div className="app-shell relative mx-auto flex min-h-screen w-full max-w-[1480px] overflow-hidden bg-[#fafaf7] lg:min-h-[calc(100vh-3rem)] lg:rounded-[28px]">
+        
         {/* LIGHT DESKTOP SIDEBAR */}
         <aside className="hidden w-[76px] shrink-0 flex-col items-center border-l border-[#deddd7] bg-[#f5f4ee] py-4 lg:flex">
           <Link href="/dashboard" className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-[#282825] bg-white shadow-sm" aria-label="مسار - الرئيسية">
             <Image src="/images/logo.png" alt="" fill sizes="44px" className="object-contain p-1" priority />
           </Link>
 
-          <NavigationLinks items={visibleNavigation} pathname={pathname} />
+          <DesktopNavigation items={visibleNavigation} pathname={pathname} />
 
           <div className="mt-auto flex flex-col items-center gap-2">
             <button onClick={() => setAiOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#deddd7] bg-white text-[#171714] hover:border-[#ff5636] hover:bg-[#ffd64d]" title="المساعد الذكي">
@@ -187,7 +181,8 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
+        {/* MAIN SHELL */}
+        <section className="flex min-w-0 flex-1 flex-col pb-20 lg:pb-0">
           <header className="sticky top-0 z-30 flex min-h-[76px] items-center gap-3 border-b border-[#d6d4cd] bg-[#fafaf7]/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
             <button onClick={() => setMenuOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#282825] bg-white lg:hidden" aria-label="فتح القائمة"><Menu className="h-5 w-5" /></button>
             <Link href="/dashboard" className="flex items-center gap-2 lg:hidden">
@@ -200,7 +195,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
               <Search className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#77776f]" />
               <input className="h-11 w-full rounded-xl border border-[#9d9c95] bg-white pr-10 pl-4 text-sm outline-none focus:border-[#ff5636]" placeholder="ابحث في دروسك..." />
             </label>
-            <button className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#9d9c95] bg-white" aria-label="الإشعارات"><Bell className="h-[18px] w-[18px]" /><span className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full border border-white bg-[#ff5636]" /></button>
+            <button className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#9d9c95] bg-white mr-auto sm:mr-0" aria-label="الإشعارات"><Bell className="h-[18px] w-[18px]" /><span className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full border border-white bg-[#ff5636]" /></button>
             <Link href="/profile" className="flex items-center gap-2 rounded-full py-1 pr-1 pl-2 hover:bg-[#efeee8]">
               <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#282825] bg-[#dcbcff] text-sm font-extrabold">
                 {profile?.full_name?.charAt(0) || 'م'}
@@ -216,31 +211,174 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
         </section>
       </div>
 
+      {/* MOBILE BOTTOM QUICK NAVIGATION BAR */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t-2 border-[#282825] bg-[#fafaf7]/95 p-2 backdrop-blur-xl lg:hidden shadow-[0_-4px_16px_rgba(0,0,0,0.08)]" aria-label="شريط الوصول السريع">
+        <Link
+          href="/dashboard"
+          className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+            itemIsActive('/dashboard') ? 'bg-[#ff5636] text-white shadow-sm' : 'text-[#5f5f59] hover:bg-[#eeeDE7]'
+          }`}
+        >
+          <Home className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">الرئيسية</span>
+        </Link>
+
+        <Link
+          href="/subjects"
+          className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+            itemIsActive('/subjects') ? 'bg-[#ff5636] text-white shadow-sm' : 'text-[#5f5f59] hover:bg-[#eeeDE7]'
+          }`}
+        >
+          <FolderOpen className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">المواد</span>
+        </Link>
+
+        <button
+          onClick={() => setAiOpen(true)}
+          className="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#ffd64d] text-[#282825] border-2 border-[#282825] shadow-[2px_2px_0_#282825] -translate-y-2 hover:scale-105 transition-transform"
+        >
+          <Bot className="w-5 h-5 mb-0.5 text-[#ff5636]" />
+          <span className="text-[10px] font-black">الرفيق</span>
+        </button>
+
+        <Link
+          href="/dashboard/exams"
+          className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+            itemIsActive('/dashboard/exams') ? 'bg-[#ff5636] text-white shadow-sm' : 'text-[#5f5f59] hover:bg-[#eeeDE7]'
+          }`}
+        >
+          <FileCheck2 className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">الاختبارات</span>
+        </Link>
+
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl text-xs font-extrabold text-[#5f5f59] hover:bg-[#eeeDE7] transition-all"
+        >
+          <Menu className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">القائمة</span>
+        </button>
+      </nav>
+
+      {/* SIMPLIFIED MOBILE DRAWER */}
       {menuOpen && (
-        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
           <button className="absolute inset-0" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" />
-          <aside className="absolute inset-y-0 right-0 w-[min(86vw,350px)] overflow-y-auto border-l-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl">
-            <div className="mb-6 flex items-center justify-between border-b border-[#d6d4cd] pb-4">
-              <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3"><span className="relative h-10 w-10 overflow-hidden rounded-xl border border-[#282825] bg-white"><Image src="/images/logo.png" alt="" fill sizes="40px" className="object-contain p-1" /></span><strong className="text-xl">منصة مسار</strong></Link>
-              <button onClick={() => setMenuOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#282825]" aria-label="إغلاق"><X className="h-5 w-5" /></button>
+          <aside className="absolute inset-y-0 right-0 w-[min(88vw,360px)] overflow-y-auto border-l-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl space-y-6 text-right">
+            
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-4">
+              <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3">
+                <span className="relative h-10 w-10 overflow-hidden rounded-xl border-2 border-[#282825] bg-white shadow-[2px_2px_0_#282825]">
+                  <Image src="/images/logo.png" alt="" fill sizes="40px" className="object-contain p-1" />
+                </span>
+                <strong className="text-lg font-black text-[#282825]">منصة مسار</strong>
+              </Link>
+              <button onClick={() => setMenuOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-[#282825] bg-white hover:bg-[#ff5636] hover:text-white transition-colors cursor-pointer" aria-label="إغلاق">
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <button onClick={() => { setMenuOpen(false); setAiOpen(true); }} className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-[#282825] bg-[#ffd64d] p-4 text-right">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#282825] text-white"><Bot className="h-5 w-5" /></span>
-              <span><strong className="block text-sm">اسأل رفيقك الذكي</strong><small className="text-[#676760]">شرح فوري لأي نقطة</small></span>
+
+            {/* AI Assistant Banner */}
+            <button onClick={() => { setMenuOpen(false); setAiOpen(true); }} className="flex w-full items-center gap-3 rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-4 shadow-[3px_3px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all cursor-pointer">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#282825] text-white shrink-0"><Bot className="h-5 w-5" /></span>
+              <span className="text-right"><strong className="block text-sm font-black text-[#282825]">اسأل رفيق مسار الذكي</strong><small className="text-[#5f5f59] font-bold">شرح فوري وإجابات امتحانية</small></span>
             </button>
-            <NavigationLinks items={visibleNavigation} pathname={pathname} mobile onNavigate={() => setMenuOpen(false)} />
-            <button onClick={signOut} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-[#282825] bg-[#ff5636] px-4 py-3 text-sm font-bold text-white"><LogOut className="h-4 w-4" /> تسجيل الخروج</button>
+
+            {/* Core Section (2x2 Grid) */}
+            <div className="space-y-2">
+              <span className="text-xs font-black text-[#77776f] block px-1">الأقسام الأساسية</span>
+              <div className="grid grid-cols-2 gap-2">
+                {coreItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = itemIsActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className={`flex items-center gap-2.5 rounded-xl border-2 p-3 text-xs font-extrabold transition-all ${
+                        active
+                          ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
+                          : 'border-[#282825]/20 bg-white text-[#282825] hover:bg-[#bce9fa] shadow-[1.5px_1.5px_0_#282825]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Study Tools Group */}
+            <div className="space-y-2">
+              <span className="text-xs font-black text-[#77776f] block px-1">أدوات الدراسة والتحليل</span>
+              <div className="grid grid-cols-1 gap-2">
+                {toolItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = itemIsActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition-all ${
+                        active
+                          ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
+                          : 'border-transparent bg-[#f1f0eb] text-[#282825] hover:bg-[#eeeDE7]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 text-[#ff5636] shrink-0" />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Community & Services Group */}
+            <div className="space-y-2">
+              <span className="text-xs font-black text-[#77776f] block px-1">المجتمع والخدمات</span>
+              <div className="grid grid-cols-1 gap-2">
+                {communityItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = itemIsActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition-all ${
+                        active
+                          ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
+                          : 'border-transparent bg-[#f1f0eb] text-[#282825] hover:bg-[#eeeDE7]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 text-[#7c3aed] shrink-0" />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sign Out Button */}
+            <button onClick={signOut} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#282825] bg-[#ff5636] px-4 py-3 text-xs font-black text-white shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer">
+              <LogOut className="h-4 w-4" /> تسجيل الخروج
+            </button>
           </aside>
         </div>
       )}
 
+      {/* AI CHAT MODAL */}
       {aiOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="المساعد الدراسي">
           <button className="absolute inset-0" onClick={() => setAiOpen(false)} aria-label="إغلاق المساعد" />
           <section className="relative flex h-full w-full max-w-[480px] flex-col border-r-2 border-[#282825] bg-[#fafaf7] shadow-2xl">
             <header className="flex items-center justify-between border-b-2 border-[#282825] bg-[#ffd64d] p-5">
-              <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#282825] bg-[#282825] text-white"><Bot className="h-6 w-6" /></span><span><strong className="block">رفيق مسار الذكي</strong><small>متصل ومستعد للمساعدة</small></span></div>
-              <button onClick={() => setAiOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#282825] bg-white" aria-label="إغلاق"><X className="h-5 w-5" /></button>
+              <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#282825] bg-[#282825] text-[#ffd64d]"><Bot className="h-6 w-6" /></span><span><strong className="block text-base font-black text-[#282825]">رفيق مسار الذكي</strong><small className="text-[#5f5f59] font-bold">متصل ومستعد للمساعدة</small></span></div>
+              <button onClick={() => setAiOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#282825] bg-white cursor-pointer hover:bg-[#ff5636] hover:text-white transition-colors" aria-label="إغلاق"><X className="h-5 w-5" /></button>
             </header>
             <div className="flex-1 space-y-4 overflow-y-auto p-5 bg-dot-pattern-dense">
               {messages.map((message, index) => (
@@ -249,20 +387,33 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                   <div className="font-semibold text-[#282825]">{message.text}</div>
                 </div>
               ))}
-              {isTyping && <div className="ml-auto w-fit rounded-2xl border-2 border-[#282825] bg-white px-5 py-3 text-xs font-black shadow-[3px_3px_0_#282825] animate-pulse">يفكر في الإجابة... 🤔</div>}
+              {isTyping && (
+                <div className="ml-auto max-w-[88%] rounded-2xl border-2 border-[#282825] bg-white p-4 text-xs font-bold shadow-[3px_3px_0_#282825] animate-pulse text-[#ff5636]">
+                  جاري التفكير والتوضيح... 🤖
+                </div>
+              )}
               <div ref={chatEndRef} />
             </div>
-            <div className="border-t-2 border-[#282825] bg-[#f5f4ee] p-4">
-              <div className="mb-3 flex flex-wrap gap-2">
-                {['اشرح لي هذا الدرس 📖', 'ضع خطة مراجعة 🗓️', 'اختبرني بسؤال 🎯'].map((suggestion) => <button key={suggestion} onClick={() => setQuery(suggestion.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, "").trim())} className="rounded-full border-2 border-[#282825] bg-white px-3 py-1.5 text-[11.5px] font-black text-[#282825] transition-all hover:bg-[#ffd64d] hover:-translate-y-0.5 shadow-[1.5px_1.5px_0_#282825] active:translate-y-0 active:shadow-none">{suggestion}</button>)}
-              </div>
-              <form onSubmit={askAI} className="flex gap-2">
-                <input value={query} onChange={(event) => setQuery(event.target.value)} maxLength={500} className="app-input min-w-0 flex-1 text-sm border-2 border-[#282825] shadow-[2px_2px_0_#282825] focus:shadow-[4px_4px_0_#282825] focus:border-[#ff5636]" placeholder="اكتب سؤالك هنا..." />
-                <button type="submit" disabled={isTyping} className="app-button border-2 border-[#282825] bg-[#ff5636] px-5 py-2.5 text-xs font-black text-white shadow-[2px_2px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all">
-                  إرسال
+
+            <form onSubmit={askAI} className="border-t-2 border-[#282825] bg-white p-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="اطرح أي سؤال في البكالوريا..."
+                  className="w-full rounded-xl border-2 border-[#282825] bg-[#fafaf7] p-3 text-xs font-semibold placeholder-[#77776f] focus:outline-none focus:border-[#ff5636]"
+                />
+                <button
+                  type="submit"
+                  disabled={isTyping || !query.trim()}
+                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-5 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <span>أرسل</span>
+                  <Send className="w-3.5 h-3.5" />
                 </button>
-              </form>
-            </div>
+              </div>
+            </form>
           </section>
         </div>
       )}
