@@ -1,0 +1,174 @@
+.authCanvas {
+  position: relative;
+  isolation: isolate;
+}
+
+.authCanvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.35;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.55) 1px, transparent 1px);
+  background-size: 24px 24px;
+  animation: driftPattern 24s linear infinite;
+}
+
+.visualPanel {
+  position: relative;
+  isolation: isolate;
+}
+
+.visualPanel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.08;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 80%, transparent);
+}
+
+.brandEnter {
+  animation: enterDown 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.copyEnter {
+  animation: enterUp 850ms 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.stageEnter {
+  animation: enterUp 900ms 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.formEnter {
+  animation: formReveal 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.logoGlow {
+  animation: logoBreathe 4s ease-in-out infinite;
+}
+
+.dashboardStage {
+  transform: perspective(1100px) rotateY(-4deg) rotateX(2deg);
+  transform-origin: center;
+  animation: stageFloat 7s ease-in-out infinite;
+}
+
+.floatCardOne {
+  animation: floatOne 5.5s ease-in-out infinite;
+}
+
+.floatCardTwo {
+  animation: floatTwo 6.5s 600ms ease-in-out infinite;
+}
+
+.progressFill {
+  transform-origin: right center;
+  animation: progressGrow 1.3s 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.liveDot {
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+
+.sparkle {
+  animation: sparkle 2.4s ease-in-out infinite;
+}
+
+.submitArrow {
+  transition: transform 180ms ease;
+}
+
+.submitButton:hover .submitArrow {
+  transform: translateX(-5px);
+}
+
+.modePanel {
+  animation: modeSwap 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes driftPattern {
+  to { background-position: 24px 24px; }
+}
+
+@keyframes enterDown {
+  from { opacity: 0; transform: translateY(-18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes enterUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes formReveal {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes logoBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 214, 77, 0.05), 0 14px 40px rgba(0, 0, 0, 0.28); }
+  50% { box-shadow: 0 0 0 9px rgba(255, 214, 77, 0.08), 0 18px 48px rgba(0, 0, 0, 0.38); }
+}
+
+@keyframes stageFloat {
+  0%, 100% { transform: perspective(1100px) rotateY(-4deg) rotateX(2deg) translateY(0); }
+  50% { transform: perspective(1100px) rotateY(-2deg) rotateX(1deg) translateY(-7px); }
+}
+
+@keyframes floatOne {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(2deg); }
+  50% { transform: translate3d(-5px, -12px, 0) rotate(0deg); }
+}
+
+@keyframes floatTwo {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-2deg); }
+  50% { transform: translate3d(7px, 10px, 0) rotate(1deg); }
+}
+
+@keyframes progressGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
+  50% { opacity: 0.65; box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 0.45; transform: scale(0.8) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.08) rotate(8deg); }
+}
+
+@keyframes modeSwap {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1023px) {
+  .authCanvas::before {
+    opacity: 0.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .authCanvas::before,
+  .brandEnter,
+  .copyEnter,
+  .stageEnter,
+  .formEnter,
+  .logoGlow,
+  .dashboardStage,
+  .floatCardOne,
+  .floatCardTwo,
+  .progressFill,
+  .liveDot,
+  .sparkle,
+  .modePanel {
+    animation: none !important;
+  }
+}

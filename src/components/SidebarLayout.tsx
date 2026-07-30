@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Bell,
-  BookOpen,
   Bookmark,
   Bot,
   CalendarDays,
@@ -14,7 +13,6 @@ import {
   CircleHelp,
   FileCheck2,
   FolderOpen,
-  GraduationCap,
   Grid2X2,
   Headphones,
   Home,
@@ -22,17 +20,14 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  Radio,
   Search,
   Send,
-  Settings,
   ShieldCheck,
   Sparkles,
   Trophy,
   UserCheck,
   UserRound,
   X,
-  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -57,8 +52,7 @@ const navigation: NavigationItem[] = [
   { label: 'المواد', href: '/subjects', icon: FolderOpen, group: 'core' },
   { label: 'الاختبارات', href: '/dashboard/exams', icon: FileCheck2, group: 'core' },
   { label: 'المخطط', href: '/dashboard/planner', icon: CalendarDays, group: 'core' },
-  
-  { label: 'البث المباشر', href: '/live-rooms', icon: Radio, group: 'tools' },
+
   { label: 'التحليلات', href: '/dashboard/analytics', icon: ChartNoAxesColumnIncreasing, group: 'tools' },
   { label: 'البطاقات', href: '/dashboard/flashcards', icon: Grid2X2, group: 'tools' },
   { label: 'المحفوظات', href: '/dashboard/bookmarks', icon: Bookmark, group: 'tools' },
@@ -77,7 +71,7 @@ function DesktopNavigation({ items, pathname }: { items: NavigationItem[]; pathn
   const itemIsActive = (href: string) => href === '/dashboard' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className="flex flex-1 flex-col items-center gap-2 py-3 overflow-y-auto max-h-[calc(100vh-220px)] w-full px-1 scrollbar-none" aria-label="التنقل الرئيسي">
+    <nav className="flex min-h-0 w-full flex-1 flex-col items-center justify-evenly overflow-visible px-1 py-1" aria-label="التنقل الرئيسي">
       {items.map((item) => {
         const Icon = item.icon;
         const active = itemIsActive(item.href);
@@ -87,13 +81,12 @@ function DesktopNavigation({ items, pathname }: { items: NavigationItem[]; pathn
             href={item.href}
             aria-current={active ? 'page' : undefined}
             title={item.label}
-            className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
-              active
-                ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md'
-                : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'
-            }`}
+            className={`group relative flex h-[clamp(2rem,4.4vh,2.75rem)] w-[clamp(2rem,4.4vh,2.75rem)] shrink-0 items-center justify-center rounded-xl border transition ${active
+              ? 'border-[#ff5636] bg-[#ff5636] text-white shadow-md'
+              : 'border-transparent text-[#5c5c56] hover:border-[#deddd7] hover:bg-[#eeeDE7] hover:text-[#171714]'
+              }`}
           >
-            <Icon className="h-[19px] w-[19px]" strokeWidth={2} />
+            <Icon className="h-[clamp(16px,2vh,19px)] w-[clamp(16px,2vh,19px)]" strokeWidth={2} />
             <span className="pointer-events-none absolute right-[calc(100%+12px)] z-30 hidden whitespace-nowrap rounded-lg border border-[#282825] bg-[#282825] px-3 py-1.5 text-xs font-bold text-white shadow-xl group-hover:block">
               {item.label}
             </span>
@@ -162,29 +155,27 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   }
 
   return (
-    <div className="min-h-screen bg-[#b9ced8] p-0 text-[#171714] lg:p-6 xl:p-8" dir="rtl">
-      <div className="app-shell relative mx-auto flex min-h-screen w-full max-w-[1480px] overflow-hidden bg-[#fafaf7] lg:min-h-[calc(100vh-3rem)] lg:rounded-[28px]">
-        
+    <div className="min-h-screen bg-[#b9ced8] p-0 text-[#171714] lg:h-screen lg:p-6 xl:p-8" dir="rtl">
+      <div className="app-shell relative mx-auto flex min-h-screen w-full max-w-[1480px] overflow-hidden bg-[#fafaf7] lg:h-full lg:min-h-0 lg:rounded-[28px]">
+
         {/* LIGHT DESKTOP SIDEBAR */}
-        <aside className="hidden w-[76px] shrink-0 flex-col items-center border-l border-[#deddd7] bg-[#f5f4ee] py-4 lg:flex">
-          <Link href="/dashboard" className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-[#282825] bg-white shadow-sm" aria-label="مسار - الرئيسية">
+        <aside className="hidden min-h-0 w-[76px] shrink-0 flex-col items-center overflow-visible border-l border-[#deddd7] bg-[#f5f4ee] py-3 lg:flex">
+          <Link href="/dashboard" className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#282825] bg-white shadow-sm" aria-label="مسار - الرئيسية">
             <Image src="/images/logo.png" alt="" fill sizes="44px" className="object-contain p-1" priority />
           </Link>
 
           <DesktopNavigation items={visibleNavigation} pathname={pathname} />
 
-          <div className="mt-auto flex flex-col items-center gap-2">
-            <button onClick={() => setAiOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#deddd7] bg-white text-[#171714] hover:border-[#ff5636] hover:bg-[#ffd64d]" title="المساعد الذكي">
-              <Headphones className="h-[19px] w-[19px]" />
+          <div className="flex shrink-0 flex-col items-center gap-1 pt-1">
+            <button onClick={() => setAiOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#deddd7] bg-white text-[#171714] hover:border-[#ff5636] hover:bg-[#ffd64d]" title="المساعد الذكي">
+              <Headphones className="h-[17px] w-[17px]" />
             </button>
-            <Link href="/support" className="flex h-11 w-11 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#eeeDE7] hover:text-[#171714]" title="المساعدة"><CircleHelp className="h-[19px] w-[19px]" /></Link>
-            <Link href="/profile" className="flex h-11 w-11 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#eeeDE7] hover:text-[#171714]" title="الإعدادات"><Settings className="h-[19px] w-[19px]" /></Link>
-            <button onClick={signOut} className="flex h-11 w-11 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#ff5636] hover:text-white" title="تسجيل الخروج"><LogOut className="h-[19px] w-[19px]" /></button>
+            <button onClick={signOut} className="flex h-9 w-9 items-center justify-center rounded-xl text-[#5c5c56] hover:bg-[#ff5636] hover:text-white" title="تسجيل الخروج"><LogOut className="h-[17px] w-[17px]" /></button>
           </div>
         </aside>
 
         {/* MAIN SHELL */}
-        <section className="flex min-w-0 flex-1 flex-col">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex min-h-[76px] items-center gap-3 border-b border-[#d6d4cd] bg-[#fafaf7]/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
             <button onClick={() => setMenuOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#282825] bg-white lg:hidden" aria-label="فتح القائمة"><Menu className="h-5 w-5" /></button>
             <Link href="/dashboard" className="flex items-center gap-2 lg:hidden">
@@ -218,7 +209,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
           <button className="absolute inset-0" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" />
           <aside className="absolute inset-y-0 right-0 w-[min(88vw,360px)] overflow-y-auto border-l-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl space-y-6 text-right">
-            
+
             {/* Drawer Header */}
             <div className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-4">
               <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3">
@@ -250,11 +241,10 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                       key={item.href}
                       href={item.href}
                       onClick={() => setMenuOpen(false)}
-                      className={`flex items-center gap-2.5 rounded-xl border-2 p-3 text-xs font-extrabold transition-all ${
-                        active
-                          ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
-                          : 'border-[#282825]/20 bg-white text-[#282825] hover:bg-[#bce9fa] shadow-[1.5px_1.5px_0_#282825]'
-                      }`}
+                      className={`flex items-center gap-2.5 rounded-xl border-2 p-3 text-xs font-extrabold transition-all ${active
+                        ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
+                        : 'border-[#282825]/20 bg-white text-[#282825] hover:bg-[#bce9fa] shadow-[1.5px_1.5px_0_#282825]'
+                        }`}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
                       <span>{item.label}</span>
@@ -276,11 +266,10 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                       key={item.href}
                       href={item.href}
                       onClick={() => setMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition-all ${
-                        active
-                          ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
-                          : 'border-transparent bg-[#f1f0eb] text-[#282825] hover:bg-[#eeeDE7]'
-                      }`}
+                      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition-all ${active
+                        ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
+                        : 'border-transparent bg-[#f1f0eb] text-[#282825] hover:bg-[#eeeDE7]'
+                        }`}
                     >
                       <Icon className="w-4 h-4 text-[#ff5636] shrink-0" />
                       <span>{item.label}</span>
@@ -302,11 +291,10 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
                       key={item.href}
                       href={item.href}
                       onClick={() => setMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition-all ${
-                        active
-                          ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
-                          : 'border-transparent bg-[#f1f0eb] text-[#282825] hover:bg-[#eeeDE7]'
-                      }`}
+                      className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition-all ${active
+                        ? 'border-[#282825] bg-[#ff5636] text-white shadow-[2px_2px_0_#282825]'
+                        : 'border-transparent bg-[#f1f0eb] text-[#282825] hover:bg-[#eeeDE7]'
+                        }`}
                     >
                       <Icon className="w-4 h-4 text-[#7c3aed] shrink-0" />
                       <span>{item.label}</span>
