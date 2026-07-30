@@ -1,9 +1,25 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Bookmark, CalendarDays, Check, ChevronLeft, Circle, Clock3, Flame, Plus, Search, Sparkles, Target, Trophy } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowUpLeft,
+  BookOpen,
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  Circle,
+  Clock3,
+  Flame,
+  Plus,
+  Search,
+  Sparkles,
+  Target,
+  Trophy,
+  Zap,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase/client';
 import SidebarLayout from '@/components/SidebarLayout';
@@ -22,10 +38,10 @@ function localDateKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-const colorThemes = [
-  { bg: 'bg-[#ffdc72]', accent: 'bg-[#ff5636]', tag: 'bg-[#282825] text-[#ffdc72]', border: 'border-[#282825]', shadow: 'neo-shadow-interactive-yellow' },
-  { bg: 'bg-[#d8bcff]', accent: 'bg-[#7c3aed]', tag: 'bg-[#282825] text-[#d8bcff]', border: 'border-[#282825]', shadow: 'neo-shadow-interactive-purple' },
-  { bg: 'bg-[#bce9fa]', accent: 'bg-[#0284c7]', tag: 'bg-[#282825] text-[#bce9fa]', border: 'border-[#282825]', shadow: 'neo-shadow-interactive-blue' },
+const subjectThemes = [
+  { surface: '#fff1bd', accent: '#f5b700', soft: '#fff8dd' },
+  { surface: '#eadcff', accent: '#7c3aed', soft: '#f6f0ff' },
+  { surface: '#d9f2fb', accent: '#0284c7', soft: '#effaff' },
 ];
 
 export default function DashboardPage() {
@@ -88,8 +104,10 @@ export default function DashboardPage() {
   const completedToday = todayTasks.filter((task) => task.completed).length;
   const completionPercent = todayTasks.length ? Math.round((completedToday / todayTasks.length) * 100) : 0;
   const averageScore = results.length ? Math.round(results.reduce((sum, result) => sum + result.score / result.total_questions, 0) / results.length * 100) : 0;
-  const currentBranchName = branches.find((branch) => branch.id === profile?.branch_id)?.name || '';
   const visibleSubjects = subjects.filter((subject) => subject.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 3);
+  const firstName = profile?.full_name?.split(' ')[0] || 'بك';
+  const dateLabel = new Intl.DateTimeFormat('ar-SY', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  const ringStyle = { '--dashboard-progress': `${completionPercent * 3.6}deg` } as CSSProperties;
 
   async function selectBranch(branchId: number) {
     if (!user) return;
@@ -108,6 +126,7 @@ export default function DashboardPage() {
     if (!error && completed) {
       await awardXP(user.id, 10);
       await updateStreak(user.id);
+      setXpData((current) => current ? { ...current, xp: current.xp + 10 } : current);
     }
   }
 
@@ -128,37 +147,23 @@ export default function DashboardPage() {
   }
 
   if (profile && !profile.branch_id) {
-    const branchThemes = [
-      { color: 'bg-[#ffdc72]', shadow: 'neo-shadow-interactive-yellow' },
-      { color: 'bg-[#d8bcff]', shadow: 'neo-shadow-interactive-purple' },
-      { color: 'bg-[#bce9fa]', shadow: 'neo-shadow-interactive-blue' },
-    ];
     return (
       <SidebarLayout role={profile.role} signOut={signOut}>
-        <main className="mx-auto flex min-h-[80vh] w-full max-w-4xl flex-col justify-center px-6 py-12 text-center bg-dot-pattern">
-          <span className="app-chip mx-auto bg-[#ffd64d] border-2 border-[#282825] shadow-[2px_2px_0_#282825] font-black">خطوة واحدة للبدء</span>
-          <h1 className="mt-6 text-3xl font-black sm:text-5xl text-[#282825]">ما هو فرعك الدراسي؟</h1>
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[#5f5f59] font-semibold">سنستخدم اختيارك لإظهار المواد والدروس المناسبة وإنشاء مساحة دراسية مخصصة لك.</p>
-          
-          <div className="mt-10 grid gap-6 sm:grid-cols-2">
-            {branches.map((branch, idx) => {
-              const theme = branchThemes[idx % branchThemes.length];
-              return (
-                <button 
-                  key={branch.id} 
-                  onClick={() => selectBranch(branch.id)} 
-                  disabled={updatingBranch} 
-                  className={`rounded-2xl border-2 border-[#282825] p-6 text-right transition-all hover:scale-[1.02] active:scale-[0.98] ${theme.color} ${theme.shadow}`}
-                >
-                  <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border-2 border-[#282825] bg-white shadow-[2px_2px_0_#282825]">
-                    <ScienceIcon className="h-6 w-6 text-[#282825]" />
-                  </span>
-                  <strong className="block text-2xl font-black text-[#282825]">{branch.name}</strong>
-                  <span className="mt-3 block text-sm leading-6 text-[#4a4a44] font-medium">{branch.description}</span>
+        <main className="dashboard-canvas flex min-h-[80vh] items-center justify-center px-4 py-12">
+          <section className="w-full max-w-4xl text-center" data-reveal>
+            <span className="dashboard-kicker mx-auto"><Sparkles className="h-4 w-4" /> خطوة واحدة للبدء</span>
+            <h1 className="mt-5 text-3xl font-black tracking-tight text-[#20201d] sm:text-5xl">اختر فرعك الدراسي</h1>
+            <p className="mx-auto mt-4 max-w-xl text-sm font-semibold leading-7 text-[#686862]">لنرتّب مساحتك حول المواد والدروس التي تهمك فعلًا.</p>
+            <div className="mt-10 grid gap-5 sm:grid-cols-2">
+              {branches.map((branch, index) => (
+                <button key={branch.id} onClick={() => selectBranch(branch.id)} disabled={updatingBranch} className="dashboard-branch-card group" style={{ '--branch-delay': `${index * 80}ms` } as CSSProperties}>
+                  <span className="dashboard-branch-icon"><ScienceIcon className="h-6 w-6" /></span>
+                  <span><strong className="block text-xl font-black">{branch.name}</strong><small className="mt-2 block text-sm font-semibold leading-6 text-[#686862]">{branch.description}</small></span>
+                  <ArrowUpLeft className="mr-auto h-5 w-5 transition-transform group-hover:-translate-x-1 group-hover:-translate-y-1" />
                 </button>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          </section>
         </main>
       </SidebarLayout>
     );
@@ -166,280 +171,109 @@ export default function DashboardPage() {
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <main className="mx-auto w-full max-w-[1180px] space-y-8 pb-10">
-        
-        {/* Header Block */}
-        <header className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between border-b border-[#deddd7] pb-6">
+      <main className="dashboard-canvas mx-auto w-full max-w-[1200px] pb-12">
+        <header className="dashboard-welcome" data-reveal>
           <div>
-            <p className="text-sm font-black text-[#ff5636] flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#ff5636] animate-ping" />
-              <span>{new Intl.DateTimeFormat('ar-SY', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span>
-            </p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl text-[#282825]">
-              أهلًا {profile?.full_name?.split(' ')[0] || 'بك'}، مستعد للتعلّم؟
-            </h1>
-            <p className="mt-2 text-sm text-[#5f5f59] font-bold">
-              الفرع الدراسي: <span className="bg-[#bce9fa] border border-[#282825] px-2 py-0.5 rounded-md text-xs font-black shadow-[1.5px_1.5px_0_#282825]">{currentBranchName}</span>
-              <span className="mx-2">•</span> اجعل اليوم خطوة صغيرة نحو هدفك الكبير 🚀
-            </p>
+            <p className="dashboard-eyebrow"><span /> {dateLabel}</p>
+            <h1 className="mt-2 text-3xl font-black text-[#20201d] sm:text-[2.65rem]">صباح الإنجاز، {firstName}</h1>
+            <p className="mt-2 text-sm font-semibold text-[#72726b]">ركّز على خطوة واحدة الآن، واترك الباقي لمسارك.</p>
           </div>
-          
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="relative w-full sm:w-64 xl:hidden">
-              <Search className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#282825] z-10" />
-              <input 
-                value={searchQuery} 
-                onChange={(event) => setSearchQuery(event.target.value)} 
-                className="app-input w-full pr-10 text-sm border-2 border-[#282825] shadow-[2px_2px_0_#282825]" 
-                placeholder="ابحث عن مادة..." 
-              />
-            </label>
-            
-            <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
-              <Flame className="h-4 w-4 text-[#ff5636] fill-[#ff5636]" /> {xpData?.streak_days || 0} أيام متتالية
-            </span>
-            
-            <Link 
-              href="/dashboard/planner" 
-              className="app-button app-button-secondary border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] hover:shadow-[4px_4px_0_#282825] hover:-translate-y-0.5 transition-all text-sm font-black"
-            >
-              <CalendarDays className="h-4 w-4" /> خطتي
-            </Link>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="dashboard-pill"><Flame className="h-4 w-4 fill-[#ff6547] text-[#ff6547]" /><strong>{xpData?.streak_days || 0}</strong> أيام متتالية</span>
+            <span className="dashboard-pill dashboard-pill-dark"><Zap className="h-4 w-4 fill-[#ffd64d] text-[#ffd64d]" /><strong>{xpData?.xp || 0}</strong> XP</span>
+            <Link href="/dashboard/planner" className="dashboard-icon-link" aria-label="فتح المخطط"><CalendarDays className="h-5 w-5" /></Link>
           </div>
         </header>
 
-        {/* Hero Alert & Daily Progress */}
-        <section className="grid gap-6 xl:grid-cols-[1.45fr_.85fr]">
-          
-          {/* Next Lesson Box */}
-          <article className="relative overflow-hidden rounded-[28px] border-2 border-[#282825] bg-gradient-to-br from-[#e9d5ff] via-[#f3e8ff] to-[#fae8ff] p-6 shadow-[5px_5px_0_#282825] transition-all duration-200 hover:shadow-[7px_7px_0_#282825] sm:p-8 bg-dot-pattern-dense">
-            <div className="absolute -left-12 -top-12 h-48 w-48 rounded-full bg-[#d8b4fe]/30 blur-2xl pointer-events-none" />
-            
-            <div className="relative z-10 max-w-xl text-right">
-              <span className="app-chip border-2 border-[#282825] bg-white shadow-[2px_2px_0_#282825] font-black">
-                <Target className="h-4 w-4 text-[#ff5636]" /> خطوتك التالية
-              </span>
-              
-              <p className="mt-6 text-sm font-black text-[#7c3aed] uppercase tracking-wide">
-                {nextLesson?.subjects?.name || subjects[0]?.name || 'مادتك الأولى'}
-              </p>
-              
-              <h2 className="mt-2 text-2xl font-black text-[#282825] sm:text-3xl leading-snug">
-                {nextLesson?.name || 'ابدأ باستكشاف دروس مادتك'}
-              </h2>
-              
-              <p className="mt-4 flex items-center gap-2 text-sm font-extrabold text-[#5f5f59]">
-                <Clock3 className="h-4 w-4 text-[#ff5636]" /> ٢٥ دقيقة مقترحة للدراسة والتركيز
-              </p>
-              
-              <Link 
-                href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} 
-                className="app-button mt-8 border-2 border-[#282825] bg-[#ff5636] text-white shadow-[3px_3px_0_#282825] hover:shadow-[5px_5px_0_#282825] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all font-black text-sm"
-              >
-                <span>ابدأ الآن</span>
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
+        <section className="mt-7 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,.65fr)]">
+          <article className="dashboard-focus-card" data-reveal>
+            <div className="relative z-10 flex h-full flex-col justify-between gap-10">
+              <div>
+                <span className="dashboard-kicker"><Target className="h-4 w-4" /> جلسة اليوم</span>
+                <p className="mt-7 text-xs font-black uppercase text-[#7c3aed]">{nextLesson?.subjects?.name || subjects[0]?.name || 'مادتك الأولى'}</p>
+                <h2 className="mt-2 max-w-2xl text-2xl font-black leading-[1.45] text-[#20201d] sm:text-[2rem]">{nextLesson?.name || 'ابدأ باستكشاف دروس مادتك'}</h2>
+                <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#66665f]"><Clock3 className="h-4 w-4" /> جلسة تركيز مقترحة · ٢٥ دقيقة</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} className="dashboard-primary-action"><span>ابدأ الجلسة</span><ArrowLeft className="h-4 w-4" /></Link>
+                <span className="text-xs font-bold text-[#77776f]">أكمل درسًا لتحصل على نقاط إضافية</span>
+              </div>
             </div>
-            
-            <div className="absolute bottom-6 left-8 hidden rotate-[-6deg] rounded-[20px] border-2 border-[#282825] bg-[#ffd64d] px-5 py-3 font-black shadow-[4px_4px_0_#282825] transition-all hover:rotate-6 hover:scale-105 sm:block select-none">
-              تقدم بثبات! 🚀
-            </div>
+            <div className="dashboard-focus-mark" aria-hidden="true"><BookOpen className="h-16 w-16" /><span>25</span></div>
           </article>
 
-          {/* Today's Goal Gauge */}
-          <article className="rounded-[28px] border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825]">
+          <article className="dashboard-progress-card" data-reveal>
             <div className="flex items-start justify-between">
-              <div>
-                <p className="text-lg font-black text-[#282825]">إنجاز اليوم</p>
-                <p className="mt-1 text-xs text-[#5f5f59] font-bold">{completedToday} من {todayTasks.length} مهام مكتملة</p>
-              </div>
-              <strong className="text-3xl font-black text-[#ff5636] bg-[#ff5636]/10 border border-[#ff5636] px-3 py-1 rounded-xl shadow-[2px_2px_0_#ff5636]">
-                {completionPercent}%
-              </strong>
+              <div><p className="text-lg font-black text-[#20201d]">إيقاع اليوم</p><p className="mt-1 text-xs font-semibold text-[#77776f]">{completedToday} من {todayTasks.length} مهام</p></div>
+              <span className="dashboard-live-badge">مباشر</span>
             </div>
-            
-            {/* Striped progress bar */}
-            <div className="mt-6 h-5 overflow-hidden rounded-full border-2 border-[#282825] bg-[#f1f0eb] p-0.5">
-              <div 
-                className="h-full rounded-full bg-gradient-to-r from-[#ff5636] to-[#ff7d63] transition-all duration-500 animate-progress-stripe" 
-                style={{ width: `${completionPercent}%` }} 
-              />
+            <div className="dashboard-progress-ring" style={ringStyle} aria-label={`نسبة إنجاز اليوم ${completionPercent}%`}>
+              <div><strong>{completionPercent}<small>%</small></strong><span>مكتمل</span></div>
             </div>
-            
-            <div className="mt-8 grid grid-cols-2 gap-4 border-t-2 border-[#282825] pt-6">
-              <div>
-                <span className="text-xs font-black text-[#5f5f59]">متوسط الاختبارات</span>
-                <strong className="mt-2 block text-3xl font-black text-[#282825]">{averageScore}%</strong>
-              </div>
-              <div>
-                <span className="text-xs font-black text-[#5f5f59]">نقاط الخبرة (XP)</span>
-                <strong className="mt-2 block text-3xl font-black text-[#ff5636]">{xpData?.xp || 0}</strong>
-              </div>
+            <div className="grid grid-cols-2 divide-x divide-x-reverse divide-[#deddd7] border-t border-[#deddd7] pt-5">
+              <div className="px-3 text-center"><small className="block text-[11px] font-bold text-[#77776f]">متوسط الاختبارات</small><strong className="mt-1 block text-xl font-black">{averageScore}%</strong></div>
+              <div className="px-3 text-center"><small className="block text-[11px] font-bold text-[#77776f]">موادك</small><strong className="mt-1 block text-xl font-black">{subjects.length}</strong></div>
             </div>
           </article>
         </section>
 
-        {/* Subjects Course list */}
-        <section>
-          <div className="mb-6 flex items-end justify-between">
-            <div>
-              <h2 className="text-2xl font-black text-[#282825]">دوراتي الدراسية</h2>
-              <p className="mt-1 text-sm text-[#5f5f59] font-semibold">تابع تقدمك في المواد الأساسية للمنهاج</p>
+        <section className="mt-9" data-reveal>
+          <div className="dashboard-section-heading">
+            <div><span className="dashboard-section-index">01</span><h2>موادك الحالية</h2><p>واصل من حيث توقفت</p></div>
+            <div className="flex items-center gap-3">
+              <label className="dashboard-subject-search"><Search className="h-4 w-4" /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="ابحث عن مادة" aria-label="ابحث عن مادة" /></label>
+              <Link href="/subjects" className="dashboard-text-link">عرض الكل <ChevronLeft className="h-4 w-4" /></Link>
             </div>
-            <Link href="/subjects" className="text-sm font-black text-[#ff5636] hover:underline flex items-center gap-1">
-              <span>عرض الكل</span>
-              <ChevronLeft className="h-4 w-4" />
-            </Link>
           </div>
-          
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
             {visibleSubjects.length > 0 ? visibleSubjects.map((subject, index) => {
-              const theme = colorThemes[index % colorThemes.length];
+              const theme = subjectThemes[index % subjectThemes.length];
               const progress = index === 0 ? 34 : index === 1 ? 58 : 76;
               return (
-                <article 
-                  key={subject.id} 
-                  className={`rounded-2xl border-2 border-[#282825] p-5 transition-all duration-200 hover:scale-[1.02] ${theme.bg} ${theme.shadow}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <span className={`rounded-xl border border-[#282825] px-3.5 py-1 text-xs font-black shadow-[1.5px_1.5px_0_#282825] ${theme.tag}`}>
-                      {subject.name}
-                    </span>
-                    <Bookmark className="h-5 w-5 text-[#282825] cursor-pointer" />
-                  </div>
-                  
-                  <h3 className="mt-6 min-h-[50px] text-xl font-black leading-snug text-[#282825]">
-                    {subject.name}
-                  </h3>
-                  
-                  <div className="mt-5 flex items-center justify-between text-xs font-black text-[#282825]/80">
-                    <span>التقدم الدراسي</span>
-                    <span>{progress}%</span>
-                  </div>
-                  
-                  {/* Subject progress bar */}
-                  <div className="mt-2.5 h-3 overflow-hidden rounded-full border-2 border-[#282825] bg-white/90">
-                    <div className={`h-full rounded-full ${theme.accent}`} style={{ width: `${progress}%` }} />
-                  </div>
-                  
-                  <div className="mt-6 flex items-center justify-between pt-3 border-t border-[#282825]/10">
-                    <span className="flex -space-x-2 space-x-reverse select-none">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#282825] bg-[#ff5636] text-[10px] font-black text-white">أ</span>
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#282825] bg-[#0284c7] text-[10px] font-black text-white">ر</span>
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#282825] bg-[#282825] text-[9px] font-black text-white">+٨</span>
-                    </span>
-                    
-                    <Link 
-                      href={`/subjects/${subject.id}`} 
-                      className="app-button min-h-9 border-2 border-[#282825] bg-white text-[#282825] px-4 py-1.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:bg-[#282825] hover:text-white hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
-                    >
-                      متابعة
-                    </Link>
-                  </div>
-                </article>
+                <Link key={subject.id} href={`/subjects/${subject.id}`} className="dashboard-subject-card group" style={{ '--subject-surface': theme.surface, '--subject-accent': theme.accent, '--subject-soft': theme.soft, '--subject-delay': `${index * 90}ms` } as CSSProperties}>
+                  <div className="flex items-start justify-between"><span className="dashboard-subject-icon"><BookOpen className="h-5 w-5" /></span><ArrowUpLeft className="h-5 w-5 text-[#77776f] transition-transform group-hover:-translate-x-1 group-hover:-translate-y-1" /></div>
+                  <div className="mt-7"><p className="text-[11px] font-black text-[#77776f]">المادة الدراسية</p><h3 className="mt-1 text-xl font-black text-[#20201d]">{subject.name}</h3></div>
+                  <div className="mt-7"><div className="flex justify-between text-[11px] font-black"><span>التقدم</span><span>{progress}%</span></div><div className="dashboard-subject-progress"><span style={{ width: `${progress}%` }} /></div></div>
+                </Link>
               );
-            }) : (
-              <div className="rounded-2xl border-2 border-dashed border-[#282825] col-span-full p-8 text-center text-sm font-semibold text-[#5f5f59] bg-white">
-                لا توجد مواد مرتبطة بفرعك بعد.
-              </div>
-            )}
+            }) : <div className="dashboard-empty col-span-full">لا توجد مواد مطابقة الآن.</div>}
           </div>
         </section>
 
-        {/* Tasks Checklist & Aside challenge */}
-        <section className="grid gap-6 xl:grid-cols-[1fr_310px]">
-          
-          {/* Tasks notebook */}
-          <article className="rounded-[28px] border-2 border-[#282825] bg-white p-5 shadow-[5px_5px_0_#282825] sm:p-6 bg-dot-pattern-dense">
-            <div className="flex items-center justify-between border-b border-[#282825]/10 pb-4">
-              <div>
-                <h2 className="text-xl font-black text-[#282825]">مهامي القادمة</h2>
-                <p className="mt-1 text-xs text-[#5f5f59] font-bold">أنهِ المهام بالترتيب المناسب لك</p>
-              </div>
-              <Link href="/dashboard/planner" className="text-xs font-black text-[#ff5636] hover:underline">
-                عرض المخطط
-              </Link>
+        <section className="mt-9 grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]">
+          <article className="dashboard-task-card" data-reveal>
+            <div className="dashboard-section-heading border-b border-[#e6e5df] pb-5">
+              <div><span className="dashboard-section-index">02</span><h2>قائمة اليوم</h2><p>مهام صغيرة، تقدّم واضح</p></div>
+              <span className="dashboard-task-count">{todayTasks.filter((task) => !task.completed).length} متبقية</span>
             </div>
-            
-            <div className="mt-5 space-y-2">
+            <div className="mt-3 min-h-44">
               {todayTasks.length === 0 ? (
-                <div className="rounded-2xl border-2 border-dashed border-[#282825] bg-[#fafaf7] p-8 text-center">
-                  <CalendarDays className="mx-auto h-8 w-8 text-[#5f5f59]" />
-                  <p className="mt-3 font-black text-[#282825]">يومك فارغ حتى الآن</p>
-                  <p className="mt-1 text-xs text-[#5f5f59] font-bold">أضف مهمة صغيرة يمكنك إنجازها اليوم.</p>
-                </div>
-              ) : (
-                todayTasks.slice(0, 5).map((task) => (
-                  <button 
-                    key={task.id} 
-                    onClick={() => toggleTask(task)} 
-                    className="flex w-full items-center gap-3 border-b border-[#282825]/10 px-2 py-3.5 text-right transition hover:bg-[#fafaf7] rounded-xl hover:-translate-y-0.5 hover:shadow-[1.5px_1.5px_0_#282825] hover:border-[#282825] hover:bg-white"
-                  >
-                    <span 
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-[#282825] transition-all shadow-[1.5px_1.5px_0_#282825] ${task.completed ? 'bg-[#ffd64d] text-[#282825] shadow-none translate-x-0.5 translate-y-0.5' : 'bg-white text-transparent'}`}
-                    >
-                      {task.completed ? <Check className="h-4 w-4 stroke-[3px]" /> : <Circle className="h-3 w-3 text-[#d6d4cd]" />}
-                    </span>
-                    
-                    <span className="min-w-0 flex-1">
-                      <strong className={`block text-sm font-extrabold ${task.completed ? 'text-[#77776f] line-through font-medium' : 'text-[#282825]'}`}>
-                        {task.title}
-                      </strong>
-                      {task.subjects?.name && (
-                        <small className="text-[10px] font-black bg-[#ff5636]/10 border border-[#ff5636]/30 text-[#ff5636] px-2 py-0.5 rounded-md mt-1 inline-block">
-                          {task.subjects.name}
-                        </small>
-                      )}
-                    </span>
-                    <small className="text-xs font-black text-[#77776f]">اليوم</small>
-                  </button>
-                ))
-              )}
+                <div className="dashboard-empty"><CalendarDays className="mx-auto mb-2 h-7 w-7" />يومك فارغ. أضف أول خطوة.</div>
+              ) : todayTasks.slice(0, 5).map((task, index) => (
+                <button key={task.id} onClick={() => toggleTask(task)} className={`dashboard-task-row ${task.completed ? 'is-complete' : ''}`} style={{ '--task-delay': `${index * 55}ms` } as CSSProperties}>
+                  <span className="dashboard-check">{task.completed ? <Check className="h-4 w-4" /> : <Circle className="h-2.5 w-2.5" />}</span>
+                  <span className="min-w-0 flex-1"><strong>{task.title}</strong>{task.subjects?.name && <small>{task.subjects.name}</small>}</span>
+                  <span className="dashboard-task-time">اليوم</span>
+                </button>
+              ))}
             </div>
-            
-            <form onSubmit={addTodayTask} className="mt-5 flex gap-2">
-              <input 
-                value={taskTitle} 
-                onChange={(event) => setTaskTitle(event.target.value)} 
-                placeholder="أضف مهمة لليوم..." 
-                aria-label="مهمة جديدة" 
-                className="app-input min-w-0 flex-1 text-sm border-2 border-[#282825] shadow-[2px_2px_0_#282825] focus:shadow-[4px_4px_0_#282825] focus:border-[#ff5636]" 
-              />
-              <button 
-                disabled={addingTask || !taskTitle.trim()} 
-                className="app-button flex h-[46px] w-[46px] shrink-0 items-center justify-center p-0 border-2 border-[#282825] bg-[#ff5636] shadow-[2px_2px_0_#282825] hover:shadow-[3px_3px_0_#282825] hover:-translate-y-0.5 hover:-translate-x-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none"
-              >
-                <Plus className="h-5 w-5 stroke-[2.5px]" />
-              </button>
+            <form onSubmit={addTodayTask} className="dashboard-add-task">
+              <Plus className="h-5 w-5 text-[#ff5636]" />
+              <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="ما الخطوة التالية؟" aria-label="مهمة جديدة" />
+              <button disabled={addingTask || !taskTitle.trim()}>إضافة</button>
             </form>
           </article>
 
-          {/* Aside Challenge card */}
-          <aside className="relative overflow-hidden rounded-[28px] border-2 border-[#282825] bg-gradient-to-br from-[#ffd64d] via-[#ffe685] to-[#fff0b3] p-6 text-[#282825] shadow-[5px_5px_0_#282825] bg-stripe-pattern">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[#ff5636]" />
-              <span className="text-xs font-black uppercase tracking-wider bg-white border border-[#282825] px-2 py-0.5 rounded shadow-[1px_1px_0_#282825]">اقتراح مخصص لك</span>
-            </div>
-            
-            <h2 className="mt-5 text-2xl font-black leading-snug">مستعد لتحدٍ جديد؟</h2>
-            <p className="mt-3 text-sm font-extrabold leading-6 text-slate-800">
-              اختبر معلوماتك بنموذج امتحان وزاري قصير واحصل على نقاط خبرة إضافية.
-            </p>
-            
-            <div className="mt-5 flex items-center gap-2 text-xs font-black text-slate-850">
-              <Trophy className="h-4 w-4 text-[#ff5636] fill-[#ff5636]" /> +٢٠ XP عند إكمال الاختبار
-            </div>
-            
-            <Link 
-              href="/dashboard/exams" 
-              className="app-button mt-8 border-2 border-[#282825] bg-[#ff5636] text-white py-3 text-sm font-black shadow-[3px_3px_0_#282825] hover:shadow-[5px_5px_0_#282825] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all flex items-center justify-center gap-2"
-            >
-              <span>ابدأ الاختبار</span>
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+          <aside className="dashboard-challenge-card" data-reveal>
+            <span className="dashboard-challenge-icon"><Trophy className="h-6 w-6" /></span>
+            <p className="mt-7 text-xs font-black text-[#ffdd61]">تحدّي اليوم</p>
+            <h2 className="mt-2 text-2xl font-black leading-snug">اختبر مستواك في 10 دقائق</h2>
+            <p className="mt-3 text-sm font-semibold leading-7 text-white/70">نموذج وزاري قصير يساعدك على اكتشاف نقاط قوتك.</p>
+            <div className="mt-6 flex items-center gap-2 text-xs font-black"><Zap className="h-4 w-4 fill-[#ffdd61] text-[#ffdd61]" /> +٢٠ نقطة خبرة</div>
+            <Link href="/dashboard/exams" className="dashboard-challenge-action"><span>ابدأ التحدّي</span><ArrowLeft className="h-4 w-4" /></Link>
+            <Sparkles className="dashboard-challenge-spark" aria-hidden="true" />
           </aside>
         </section>
-
       </main>
     </SidebarLayout>
   );
