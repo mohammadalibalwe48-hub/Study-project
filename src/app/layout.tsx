@@ -4,6 +4,7 @@ import "katex/dist/katex.min.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import PwaInstaller from "@/components/pwa/PwaInstaller";
+import MotionSystem from "@/components/MotionSystem";
 
 export const metadata: Metadata = {
   title: {
@@ -74,6 +75,7 @@ export default function RootLayout({
       <body
         className="min-h-full flex flex-col transition-colors duration-200 selection:bg-cyan-300/25 selection:text-white"
       >
+        <MotionSystem />
         <ThemeProvider>
           <AuthProvider>
             {children}
