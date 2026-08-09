@@ -333,20 +333,10 @@ function RemoteVideo({ stream, name }: { stream: MediaStream; name: string }) {
     }
   }, [stream]);
 
-  const hasVideoTrack = stream.getVideoTracks().length > 0 && stream.getVideoTracks().some((t) => t.enabled);
-
   return (
     <div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#d8bcff]">
       <audio ref={audioRef} autoPlay playsInline />
-      {hasVideoTrack ? (
-        <video ref={videoRef} autoPlay playsInline className="h-full min-h-56 w-full object-cover" />
-      ) : (
-        <div className="flex min-h-56 flex-col items-center justify-center text-white">
-          <UserRound className="h-12 w-12 text-[#bce9fa]" />
-          <p className="mt-2 font-black">{name}</p>
-          <span className="mt-1 text-xs font-semibold text-white/60">صوتي مباشر</span>
-        </div>
-      )}
+      <video ref={videoRef} autoPlay playsInline className="h-full min-h-56 w-full object-cover" />
       <span className="absolute bottom-3 right-3 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">{name}</span>
     </div>
   );

@@ -10,20 +10,13 @@ export interface RoomParticipant {
     cameraEnabled: boolean;
     isOnline: boolean;
     cfSessionId?: string;
+    audioTrackId?: string;
+    videoTrackId?: string;
 }
 
 export interface RemoteRoomStream {
     userId: string;
     stream: MediaStream;
-}
-
-interface SignalPayload {
-    senderId: string;
-    recipientId: string | null;
-    type: 'ready' | 'offer' | 'answer' | 'ice' | 'media-state';
-    payload?: any;
-    micEnabled?: boolean;
-    cameraEnabled?: boolean;
 }
 
 interface UseStudyRoomCallOptions {
@@ -33,38 +26,33 @@ interface UseStudyRoomCallOptions {
     localVideoRef: RefObject<HTMLVideoElement | null>;
 }
 
-const peerConfiguration: RTCConfiguration = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-    ],
-};
-
 export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مسار', localVideoRef }: UseStudyRoomCallOptions) {
     const [participants, setParticipants] = useState<RoomParticipant[]>([]);
     const [remoteStreams, setRemoteStreams] = useState<RemoteRoomStream[]>([]);
     const [micEnabled, setMicEnabled] = useState(false);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [mediaError, setMediaError] = useState('');
-    const [cfEngineActive, setCfEngineActive] = useState(false);
+    const [cfSessionId, setCfSessionId] = useState<string | null>(null);
 
     const localStreamRef = useRef<MediaStream | null>(null);
-    const peersRef = useRef(new Map<string, RTCPeerConnection>());
-    const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
+    const pcRef = useRef<RTCPeerConnection | null>(null);
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-    const cfSessionIdRef = useRef<string | null>(null);
+    const pulledTracksRef = useRef<Set<string>>(new Set());
 
     const micEnabledRef = useRef(micEnabled);
     const cameraEnabledRef = useRef(cameraEnabled);
+    const audioTrackIdRef = useRef<string | null>(null);
+    const videoTrackIdRef = useRef<string | null>(null);
+    const cfSessionIdRef = useRef<string | null>(cfSessionId);
 
     useEffect(() => {
         micEnabledRef.current = micEnabled;
         cameraEnabledRef.current = cameraEnabled;
-    }, [micEnabled, cameraEnabled]);
+        cfSessionIdRef.current = cfSessionId;
+    }, [micEnabled, cameraEnabled, cfSessionId]);
 
-    // Check Cloudflare Calls API availability
-    const initCloudflareEngine = useCallback(async () => {
+    // 1. Initialize Cloudflare Calls SFU WebRTC Session
+    const initCloudflareSession = useCallback(async () => {
         try {
             const res = await fetch('/api/cloudflare/calls', {
                 method: 'POST',
@@ -72,181 +60,138 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 body: JSON.stringify({ action: 'create-session' }),
             });
             const data = await res.json();
-            if (data.configured && data.sessionId) {
-                cfSessionIdRef.current = data.sessionId;
-                setCfEngineActive(true);
-                return data;
+
+            if (!data.configured || !data.sessionId) {
+                setMediaError('Cloudflare Calls API keys error. Check Vercel environment variables.');
+                return null;
             }
-        } catch {
-            setCfEngineActive(false);
-        }
-        return null;
-    }, []);
 
-    const sendSignal = useCallback((recipientId: string | null, type: SignalPayload['type'], extra?: any) => {
-        if (!channelRef.current || !userId) return;
-        channelRef.current.send({
-            type: 'broadcast',
-            event: 'webrtc-signal',
-            payload: {
-                senderId: userId,
-                recipientId,
-                type,
-                micEnabled: micEnabledRef.current,
-                cameraEnabled: cameraEnabledRef.current,
-                ...extra,
-            } satisfies SignalPayload,
-        });
-    }, [userId]);
+            const sessionId = data.sessionId as string;
+            setCfSessionId(sessionId);
 
-    const closePeer = useCallback((remoteUserId: string) => {
-        const peer = peersRef.current.get(remoteUserId);
-        if (peer) {
-            peer.ontrack = null;
-            peer.onicecandidate = null;
-            peer.onnegotiationneeded = null;
-            peer.close();
-            peersRef.current.delete(remoteUserId);
-        }
-        pendingIceRef.current.delete(remoteUserId);
-        setRemoteStreams((current) => current.filter((item) => item.userId !== remoteUserId));
-    }, []);
-
-    const createPeer = useCallback((remoteUserId: string) => {
-        const existing = peersRef.current.get(remoteUserId);
-        if (existing) return existing;
-
-        const peer = new RTCPeerConnection(peerConfiguration);
-
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((track) => {
-                peer.addTrack(track, localStreamRef.current!);
+            // Create RTCPeerConnection connected to Cloudflare SFU
+            const pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
             });
-        }
 
-        peer.onicecandidate = (event) => {
-            if (event.candidate) {
-                sendSignal(remoteUserId, 'ice', { payload: event.candidate.toJSON() });
+            pc.ontrack = (event) => {
+                const stream = event.streams[0] || new MediaStream([event.track]);
+                const trackId = event.track.id;
+
+                setRemoteStreams((current) => {
+                    const existing = current.find((s) => s.stream.id === stream.id);
+                    if (existing) return current;
+                    return [...current, { userId: trackId, stream }];
+                });
+            };
+
+            pcRef.current = pc;
+
+            // Set remote offer from Cloudflare and send local answer
+            if (data.sessionDescription) {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sessionDescription));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+                await fetch('/api/cloudflare/calls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'renegotiate',
+                        sessionId,
+                        sdp: answer,
+                    }),
+                });
             }
-        };
 
-        peer.ontrack = (event) => {
-            const stream = event.streams[0] || new MediaStream([event.track]);
-            setRemoteStreams((current) => [
-                ...current.filter((item) => item.userId !== remoteUserId),
-                { userId: remoteUserId, stream },
-            ]);
-        };
-
-        peer.onconnectionstatechange = () => {
-            if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
-                closePeer(remoteUserId);
-            }
-        };
-
-        peer.onnegotiationneeded = async () => {
-            try {
-                if (peer.signalingState !== 'stable') return;
-                const offer = await peer.createOffer();
-                await peer.setLocalDescription(offer);
-                sendSignal(remoteUserId, 'offer', { payload: offer });
-            } catch (err) {
-                console.error('Renegotiation offer error:', err);
-            }
-        };
-
-        peersRef.current.set(remoteUserId, peer);
-        return peer;
-    }, [closePeer, sendSignal]);
-
-    const createOffer = useCallback(async (remoteUserId: string) => {
-        try {
-            const peer = createPeer(remoteUserId);
-            if (peer.signalingState !== 'stable') return;
-            const offer = await peer.createOffer();
-            await peer.setLocalDescription(offer);
-            sendSignal(remoteUserId, 'offer', { payload: offer });
+            return sessionId;
         } catch (err) {
-            console.error('Create offer error:', err);
+            console.error('Cloudflare Calls Init Error:', err);
+            setMediaError('تعذر الاتصال بخادم Cloudflare Calls. حاول مجدداً.');
+            return null;
         }
-    }, [createPeer, sendSignal]);
-
-    const handleSignal = useCallback(async (signal: SignalPayload) => {
-        if (!userId || signal.senderId === userId) return;
-        if (signal.recipientId && signal.recipientId !== userId) return;
-
-        const remoteUserId = signal.senderId;
-
-        setParticipants((current) => current.map((participant) => {
-            if (participant.userId === remoteUserId) {
-                return {
-                    ...participant,
-                    micEnabled: signal.micEnabled ?? participant.micEnabled,
-                    cameraEnabled: signal.cameraEnabled ?? participant.cameraEnabled,
-                    isOnline: true,
-                };
-            }
-            return participant;
-        }));
-
-        try {
-            if (signal.type === 'ready') {
-                if (userId.localeCompare(remoteUserId) < 0) {
-                    await createOffer(remoteUserId);
-                }
-                return;
-            }
-
-            const peer = createPeer(remoteUserId);
-
-            if (signal.type === 'offer') {
-                await peer.setRemoteDescription(new RTCSessionDescription(signal.payload));
-                const answer = await peer.createAnswer();
-                await peer.setLocalDescription(answer);
-                sendSignal(remoteUserId, 'answer', { payload: answer });
-            } else if (signal.type === 'answer') {
-                if (peer.signalingState === 'have-local-offer') {
-                    await peer.setRemoteDescription(new RTCSessionDescription(signal.payload));
-                }
-            } else if (signal.type === 'ice') {
-                const candidate = signal.payload;
-                if (peer.remoteDescription) {
-                    await peer.addIceCandidate(new RTCIceCandidate(candidate));
-                } else {
-                    pendingIceRef.current.set(remoteUserId, [
-                        ...(pendingIceRef.current.get(remoteUserId) || []),
-                        candidate,
-                    ]);
-                }
-            }
-
-            if (peer.remoteDescription) {
-                const pending = pendingIceRef.current.get(remoteUserId) || [];
-                pendingIceRef.current.delete(remoteUserId);
-                await Promise.all(pending.map((candidate) => peer.addIceCandidate(new RTCIceCandidate(candidate))));
-            }
-        } catch (error) {
-            console.error('WebRTC signal handling failed:', error);
-        }
-    }, [createOffer, createPeer, sendSignal, userId]);
-
-    const syncTracksToPeers = useCallback(() => {
-        if (!localStreamRef.current) return;
-        const tracks = localStreamRef.current.getTracks();
-
-        peersRef.current.forEach((peer) => {
-            const senders = peer.getSenders();
-            tracks.forEach((track) => {
-                const sender = senders.find((s) => s.track?.kind === track.kind);
-                if (sender) {
-                    void sender.replaceTrack(track);
-                } else {
-                    peer.addTrack(track, localStreamRef.current!);
-                }
-            });
-        });
     }, []);
 
+    // 2. Publish local mic/camera track to Cloudflare SFU
+    const publishTrackToCloudflare = useCallback(async (track: MediaStreamTrack, trackType: 'audio' | 'video') => {
+        if (!cfSessionId || !pcRef.current) return null;
+
+        try {
+            const trackName = `${userId}_${trackType}_${Date.now()}`;
+            pcRef.current.addTrack(track, localStreamRef.current!);
+
+            const offer = await pcRef.current.createOffer();
+            await pcRef.current.setLocalDescription(offer);
+
+            const res = await fetch('/api/cloudflare/calls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'new-track',
+                    sessionId: cfSessionId,
+                    trackId: trackName,
+                }),
+            });
+
+            const data = await res.json();
+            if (data.sessionDescription) {
+                await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sessionDescription));
+            }
+
+            if (trackType === 'audio') audioTrackIdRef.current = trackName;
+            if (trackType === 'video') videoTrackIdRef.current = trackName;
+
+            return trackName;
+        } catch (err) {
+            console.error('Cloudflare Publish Track Error:', err);
+            return null;
+        }
+    }, [cfSessionId, userId]);
+
+    // 3. Pull remote tracks from Cloudflare Calls SFU
+    const pullRemoteTrack = useCallback(async (remoteSessionId: string, trackName: string, remoteUserId: string) => {
+        if (!cfSessionId || !pcRef.current || pulledTracksRef.current.has(trackName)) return;
+
+        try {
+            pulledTracksRef.current.add(trackName);
+
+            const res = await fetch('/api/cloudflare/calls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'pull-tracks',
+                    sessionId: cfSessionId,
+                    tracks: [{
+                        location: 'remote',
+                        sessionId: remoteSessionId,
+                        trackName,
+                    }],
+                }),
+            });
+
+            const data = await res.json();
+            if (data.sessionDescription) {
+                await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.sessionDescription));
+                const answer = await pcRef.current.createAnswer();
+                await pcRef.current.setLocalDescription(answer);
+
+                await fetch('/api/cloudflare/calls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'renegotiate',
+                        sessionId: cfSessionId,
+                        sdp: answer,
+                    }),
+                });
+            }
+        } catch (err) {
+            console.error('Cloudflare Pull Track Error:', err);
+            pulledTracksRef.current.delete(trackName);
+        }
+    }, [cfSessionId]);
+
+    // 4. Request local media stream (Mic / Camera)
     const requestMedia = useCallback(async (withVideo: boolean) => {
         setMediaError('');
         if (!navigator.mediaDevices?.getUserMedia) {
@@ -280,19 +225,26 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 await localVideoRef.current.play().catch(() => undefined);
             }
 
-            const hasMic = localStreamRef.current.getAudioTracks().some((t) => t.enabled);
-            const hasCam = localStreamRef.current.getVideoTracks().some((t) => t.enabled);
+            const audioTrack = localStreamRef.current.getAudioTracks()[0];
+            const videoTrack = localStreamRef.current.getVideoTracks()[0];
+
+            if (audioTrack && !audioTrackIdRef.current) {
+                await publishTrackToCloudflare(audioTrack, 'audio');
+            }
+            if (videoTrack && !videoTrackIdRef.current) {
+                await publishTrackToCloudflare(videoTrack, 'video');
+            }
+
+            const hasMic = Boolean(audioTrack?.enabled);
+            const hasCam = Boolean(videoTrack?.enabled);
 
             setMicEnabled(hasMic);
             setCameraEnabled(hasCam);
-
-            syncTracksToPeers();
-            sendSignal(null, 'media-state');
         } catch (err: any) {
             console.error('Media Access Error:', err);
             setMediaError('لم نتمكن من الوصول إلى الميكروفون أو الكاميرا. تحقق من الصلاحيات ثم حاول مجدداً.');
         }
-    }, [localVideoRef, sendSignal, syncTracksToPeers]);
+    }, [localVideoRef, publishTrackToCloudflare]);
 
     const toggleMic = useCallback(() => {
         const audioTrack = localStreamRef.current?.getAudioTracks()[0];
@@ -302,8 +254,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         }
         audioTrack.enabled = !audioTrack.enabled;
         setMicEnabled(audioTrack.enabled);
-        sendSignal(null, 'media-state');
-    }, [requestMedia, sendSignal]);
+    }, [requestMedia]);
 
     const toggleCamera = useCallback(() => {
         const videoTrack = localStreamRef.current?.getVideoTracks()[0];
@@ -313,8 +264,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         }
         videoTrack.enabled = !videoTrack.enabled;
         setCameraEnabled(videoTrack.enabled);
-        sendSignal(null, 'media-state');
-    }, [requestMedia, sendSignal]);
+    }, [requestMedia]);
 
     const loadDbParticipants = useCallback(async () => {
         if (!roomId || !userId) return;
@@ -367,26 +317,25 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             localVideoRef.current.srcObject = null;
         }
 
-        peersRef.current.forEach((peer) => {
-            peer.ontrack = null;
-            peer.onicecandidate = null;
-            peer.close();
-        });
-        peersRef.current.clear();
-        pendingIceRef.current.clear();
+        if (pcRef.current) {
+            pcRef.current.close();
+            pcRef.current = null;
+        }
 
+        pulledTracksRef.current.clear();
         setRemoteStreams([]);
         setMicEnabled(false);
         setCameraEnabled(false);
     }, [localVideoRef]);
 
+    // 5. Connect room presence and sync Cloudflare SFU sessions
     useEffect(() => {
         if (!roomId || !userId) return;
 
-        void initCloudflareEngine();
+        void initCloudflareSession();
         void loadDbParticipants();
 
-        const channel = supabase.channel(`room-call:${roomId}`, {
+        const channel = supabase.channel(`cf-room:${roomId}`, {
             config: { presence: { key: userId } },
         });
 
@@ -410,10 +359,21 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     const merged = current.map((p) => {
                         const presence = presenceMap.get(p.userId);
                         if (presence) {
+                            // If remote participant published Cloudflare tracks, pull them!
+                            if (presence.cf_session_id && presence.audio_track_id && p.userId !== userId) {
+                                void pullRemoteTrack(presence.cf_session_id, presence.audio_track_id, p.userId);
+                            }
+                            if (presence.cf_session_id && presence.video_track_id && p.userId !== userId) {
+                                void pullRemoteTrack(presence.cf_session_id, presence.video_track_id, p.userId);
+                            }
+
                             return {
                                 ...p,
-                                micEnabled: p.userId === userId ? micEnabledRef.current : (presence.mic_enabled ?? p.micEnabled),
-                                cameraEnabled: p.userId === userId ? cameraEnabledRef.current : (presence.camera_enabled ?? p.cameraEnabled),
+                                cfSessionId: presence.cf_session_id,
+                                audioTrackId: presence.audio_track_id,
+                                videoTrackId: presence.video_track_id,
+                                micEnabled: p.userId === userId ? micEnabledRef.current : Boolean(presence.mic_enabled),
+                                cameraEnabled: p.userId === userId ? cameraEnabledRef.current : Boolean(presence.camera_enabled),
                                 isOnline: true,
                             };
                         }
@@ -422,9 +382,19 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
                     presenceMap.forEach((presence, pid) => {
                         if (!merged.some((p) => p.userId === pid)) {
+                            if (presence.cf_session_id && presence.audio_track_id && pid !== userId) {
+                                void pullRemoteTrack(presence.cf_session_id, presence.audio_track_id, pid);
+                            }
+                            if (presence.cf_session_id && presence.video_track_id && pid !== userId) {
+                                void pullRemoteTrack(presence.cf_session_id, presence.video_track_id, pid);
+                            }
+
                             merged.push({
                                 userId: pid,
                                 fullName: presence.full_name || (pid === userId ? profileName : 'طالب مسار'),
+                                cfSessionId: presence.cf_session_id,
+                                audioTrackId: presence.audio_track_id,
+                                videoTrackId: presence.video_track_id,
                                 micEnabled: pid === userId ? micEnabledRef.current : Boolean(presence.mic_enabled),
                                 cameraEnabled: pid === userId ? cameraEnabledRef.current : Boolean(presence.camera_enabled),
                                 isOnline: true,
@@ -434,44 +404,18 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
                     return merged;
                 });
-
-                peersRef.current.forEach((_, remoteUserId) => {
-                    if (!presenceMap.has(remoteUserId)) {
-                        closePeer(remoteUserId);
-                    }
-                });
-            })
-            .on('presence', { event: 'join' }, ({ newPresences }) => {
-                newPresences.forEach((presence: any) => {
-                    const remoteUserId = presence.user_id;
-                    if (remoteUserId && remoteUserId !== userId) {
-                        void createOffer(remoteUserId);
-                    }
-                });
-            })
-            .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-                leftPresences.forEach((presence: any) => {
-                    const remoteUserId = presence.user_id;
-                    if (remoteUserId) {
-                        closePeer(remoteUserId);
-                    }
-                });
-            })
-            .on('broadcast', { event: 'webrtc-signal' }, ({ payload }) => {
-                void handleSignal(payload as SignalPayload);
             })
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED') {
                     void channel.track({
                         user_id: userId,
                         full_name: profileName,
+                        cf_session_id: cfSessionIdRef.current,
+                        audio_track_id: audioTrackIdRef.current,
+                        video_track_id: videoTrackIdRef.current,
                         mic_enabled: micEnabledRef.current,
                         camera_enabled: cameraEnabledRef.current,
-                        joined_at: new Date().toISOString(),
                     });
-                    sendSignal(null, 'ready');
-                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                    setMediaError('تعذر إنشاء اتصال مباشر بالغرفة. تحقق من اتصال الإنترنت وأعد المحاولة.');
                 }
             });
 
@@ -480,18 +424,21 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             void supabase.removeChannel(channel);
             void cleanup();
         };
-    }, [cleanup, closePeer, createOffer, handleSignal, initCloudflareEngine, loadDbParticipants, profileName, roomId, sendSignal, userId]);
+    }, [cleanup, initCloudflareSession, loadDbParticipants, profileName, pullRemoteTrack, roomId, userId]);
 
+    // Keep Cloudflare session presence metadata tracked
     useEffect(() => {
         if (!channelRef.current || !userId) return;
         void channelRef.current.track({
             user_id: userId,
             full_name: profileName,
+            cf_session_id: cfSessionId,
+            audio_track_id: audioTrackIdRef.current,
+            video_track_id: videoTrackIdRef.current,
             mic_enabled: micEnabled,
-            cameraEnabled: cameraEnabled,
-            joined_at: new Date().toISOString(),
+            camera_enabled: cameraEnabled,
         });
-    }, [micEnabled, cameraEnabled, profileName, userId]);
+    }, [cfSessionId, micEnabled, cameraEnabled, profileName, userId]);
 
     return {
         participants,
@@ -499,7 +446,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         micEnabled,
         cameraEnabled,
         mediaError,
-        cfEngineActive,
+        cfSessionId,
         toggleMic,
         toggleCamera,
         cleanup,
