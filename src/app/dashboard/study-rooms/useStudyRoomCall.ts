@@ -95,7 +95,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
         const peer = new RTCPeerConnection(peerConfiguration);
 
-        // Add local tracks if available
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((track) => {
                 peer.addTrack(track, localStreamRef.current!);
@@ -155,7 +154,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
         const remoteUserId = signal.senderId;
 
-        // Update participant state if signal carries state
         setParticipants((current) => current.map((participant) => {
             if (participant.userId === remoteUserId) {
                 return {
@@ -295,6 +293,50 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         sendSignal(null, 'media-state');
     }, [requestMedia, sendSignal]);
 
+    const loadDbParticipants = useCallback(async () => {
+        if (!roomId || !userId) return;
+
+        try {
+            const { data } = await supabase
+                .from('study_room_members')
+                .select('user_id,users(full_name)')
+                .eq('room_id', roomId);
+
+            const initialList: RoomParticipant[] = (data || []).map((row: any) => {
+                const relatedUser = Array.isArray(row.users) ? row.users[0] : row.users;
+                return {
+                    userId: row.user_id,
+                    fullName: relatedUser?.full_name || (row.user_id === userId ? profileName : 'طالب مسار'),
+                    micEnabled: row.user_id === userId ? micEnabledRef.current : false,
+                    cameraEnabled: row.user_id === userId ? cameraEnabledRef.current : false,
+                    isOnline: true,
+                };
+            });
+
+            // Ensure current user is always included
+            if (!initialList.some((p) => p.userId === userId)) {
+                initialList.unshift({
+                    userId,
+                    fullName: profileName,
+                    micEnabled: micEnabledRef.current,
+                    cameraEnabled: cameraEnabledRef.current,
+                    isOnline: true,
+                });
+            }
+
+            setParticipants(initialList);
+        } catch (err) {
+            console.error('Error loading DB participants:', err);
+            setParticipants([{
+                userId,
+                fullName: profileName,
+                micEnabled: micEnabledRef.current,
+                cameraEnabled: cameraEnabledRef.current,
+                isOnline: true,
+            }]);
+        }
+    }, [profileName, roomId, userId]);
+
     const cleanup = useCallback(async () => {
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
@@ -319,6 +361,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     useEffect(() => {
         if (!roomId || !userId) return;
 
+        // 1. Instantly load local user and DB members so participants is NEVER 0!
+        void loadDbParticipants();
+
+        // 2. Subscribe to Supabase Realtime channel
         const channel = supabase.channel(`room-call:${roomId}`, {
             config: { presence: { key: userId } },
         });
@@ -328,28 +374,51 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         channel
             .on('presence', { event: 'sync' }, () => {
                 const presenceState = channel.presenceState();
-                const currentParticipants: RoomParticipant[] = [];
+                const presenceMap = new Map<string, any>();
 
                 Object.keys(presenceState).forEach((key) => {
                     const presences = presenceState[key] as any[];
                     if (presences && presences.length > 0) {
                         const last = presences[presences.length - 1];
-                        currentParticipants.push({
-                            userId: last.user_id || key,
-                            fullName: last.full_name || 'طالب مسار',
-                            micEnabled: Boolean(last.mic_enabled),
-                            cameraEnabled: Boolean(last.camera_enabled),
-                            isOnline: true,
-                        });
+                        const pid = last.user_id || key;
+                        presenceMap.set(pid, last);
                     }
                 });
 
-                setParticipants(currentParticipants);
+                setParticipants((current) => {
+                    // Update online status & mic/camera state from presence
+                    const merged = current.map((p) => {
+                        const presence = presenceMap.get(p.userId);
+                        if (presence) {
+                            return {
+                                ...p,
+                                micEnabled: p.userId === userId ? micEnabledRef.current : (presence.mic_enabled ?? p.micEnabled),
+                                cameraEnabled: p.userId === userId ? cameraEnabledRef.current : (presence.camera_enabled ?? p.cameraEnabled),
+                                isOnline: true,
+                            };
+                        }
+                        return p;
+                    });
 
-                // Auto-cleanup disconnected peers
-                const activeUserIds = new Set(currentParticipants.map((p) => p.userId));
+                    // Add new presence members not in current list
+                    presenceMap.forEach((presence, pid) => {
+                        if (!merged.some((p) => p.userId === pid)) {
+                            merged.push({
+                                userId: pid,
+                                fullName: presence.full_name || (pid === userId ? profileName : 'طالب مسار'),
+                                micEnabled: pid === userId ? micEnabledRef.current : Boolean(presence.mic_enabled),
+                                cameraEnabled: pid === userId ? cameraEnabledRef.current : Boolean(presence.camera_enabled),
+                                isOnline: true,
+                            });
+                        }
+                    });
+
+                    return merged;
+                });
+
+                // Clean up disconnected peers
                 peersRef.current.forEach((_, remoteUserId) => {
-                    if (!activeUserIds.has(remoteUserId)) {
+                    if (!presenceMap.has(remoteUserId)) {
                         closePeer(remoteUserId);
                     }
                 });
@@ -393,7 +462,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             void supabase.removeChannel(channel);
             void cleanup();
         };
-    }, [cleanup, closePeer, createOffer, handleSignal, profileName, roomId, sendSignal, userId]);
+    }, [cleanup, closePeer, createOffer, handleSignal, loadDbParticipants, profileName, roomId, sendSignal, userId]);
 
     // Keep presence payload updated when mic/camera toggled
     useEffect(() => {
