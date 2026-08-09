@@ -31,7 +31,12 @@ interface Branch { id: number; name: string; slug: string; description: string; 
 interface Subject { id: number; name: string; description: string; image_url: string | null; }
 interface Lesson { id: number; name: string; subject_id: number; subjects?: { name: string } | null; }
 interface PlannerTask { id: number; title: string; due_date: string | null; completed: boolean; subject_id: number | null; subjects?: { name: string } | null; }
-interface QuizResult { score: number; total_questions: number; completed_at: string; }
+interface QuizResult {
+  score: number;
+  total_questions: number;
+  completed_at: string;
+  quizzes?: { title: string; subject_id: number; subjects?: { name: string } | null } | null;
+}
 
 function localDateKey() {
   const now = new Date();
@@ -79,17 +84,27 @@ export default function DashboardPage() {
         const [{ data: subjectData }, { data: taskData }, { data: resultData }] = await Promise.all([
           supabase.from('subjects').select('*').eq('branch_id', profile.branch_id),
           supabase.from('planner_tasks').select('id,title,due_date,completed,subject_id,subjects(name)').eq('user_id', user.id).order('due_date', { ascending: true }),
-          supabase.from('quiz_results').select('score,total_questions,completed_at').eq('user_id', user.id).order('completed_at', { ascending: false }),
+          supabase.from('quiz_results').select('score,total_questions,completed_at,quizzes(title,subject_id,subjects(name))').eq('user_id', user.id).order('completed_at', { ascending: false }),
         ]);
 
         const loadedSubjects = (subjectData || []) as Subject[];
+        const loadedResults = (resultData || []) as unknown as QuizResult[];
         setSubjects(loadedSubjects);
         setTasks((taskData || []) as unknown as PlannerTask[]);
-        setResults((resultData || []) as QuizResult[]);
+        setResults(loadedResults);
         setXpData(await getUserXPAndStreak(user.id));
 
         if (loadedSubjects.length > 0) {
-          const { data: lessonData } = await supabase.from('lessons').select('id,name,subject_id,subjects(name)').in('subject_id', loadedSubjects.map((subject) => subject.id)).order('order_index', { ascending: true }).limit(1);
+          const latestResultSubjectId = loadedResults[0]?.quizzes?.subject_id;
+          const recommendedSubjectId = latestResultSubjectId && loadedSubjects.some((subject) => subject.id === latestResultSubjectId)
+            ? latestResultSubjectId
+            : loadedSubjects[0].id;
+          const { data: lessonData } = await supabase
+            .from('lessons')
+            .select('id,name,subject_id,subjects(name)')
+            .eq('subject_id', recommendedSubjectId)
+            .order('order_index', { ascending: true })
+            .limit(1);
           setNextLesson((lessonData?.[0] as unknown as Lesson) || null);
         }
       } finally {
@@ -104,6 +119,10 @@ export default function DashboardPage() {
   const completedToday = todayTasks.filter((task) => task.completed).length;
   const completionPercent = todayTasks.length ? Math.round((completedToday / todayTasks.length) * 100) : 0;
   const averageScore = results.length ? Math.round(results.reduce((sum, result) => sum + result.score / result.total_questions, 0) / results.length * 100) : 0;
+  const latestResult = results[0] || null;
+  const latestSubjectId = latestResult?.quizzes?.subject_id;
+  const latestSubject = subjects.find((subject) => subject.id === latestSubjectId);
+  const latestScore = latestResult ? Math.round((latestResult.score / latestResult.total_questions) * 100) : null;
   const visibleSubjects = subjects.filter((subject) => subject.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 3);
   const firstName = profile?.full_name?.split(' ')[0] || 'بك';
   const dateLabel = new Intl.DateTimeFormat('ar-SY', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
@@ -190,13 +209,13 @@ export default function DashboardPage() {
             <div className="relative z-10 flex h-full flex-col justify-between gap-10">
               <div>
                 <span className="dashboard-kicker"><Target className="h-4 w-4" /> جلسة اليوم</span>
-                <p className="mt-7 text-xs font-black uppercase text-[#7c3aed]">{nextLesson?.subjects?.name || subjects[0]?.name || 'مادتك الأولى'}</p>
+                <p className="mt-7 text-xs font-black uppercase text-[#7c3aed]">{nextLesson?.subjects?.name || latestSubject?.name || subjects[0]?.name || 'مادتك الأولى'}</p>
                 <h2 className="mt-2 max-w-2xl text-2xl font-black leading-[1.45] text-[#20201d] sm:text-[2rem]">{nextLesson?.name || 'ابدأ باستكشاف دروس مادتك'}</h2>
-                <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#66665f]"><Clock3 className="h-4 w-4" /> جلسة تركيز مقترحة · ٢٥ دقيقة</p>
+                <p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#66665f]"><Clock3 className="h-4 w-4" /> {latestScore === null ? 'جلسة تركيز مقترحة · ٢٥ دقيقة' : `آخر نتيجة لك ${latestScore}% · لنثبت فهمك`}</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <Link href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} className="dashboard-primary-action"><span>ابدأ الجلسة</span><ArrowLeft className="h-4 w-4" /></Link>
-                <span className="text-xs font-bold text-[#77776f]">أكمل درسًا لتحصل على نقاط إضافية</span>
+                <Link href={nextLesson ? `/lessons/${nextLesson.id}` : '/subjects'} className="dashboard-primary-action"><span>{latestScore === null ? 'ابدأ الجلسة' : 'تابع المراجعة'}</span><ArrowLeft className="h-4 w-4" /></Link>
+                <span className="text-xs font-bold text-[#77776f]">{latestScore === null ? 'أكمل درسًا لتحصل على نقاط إضافية' : `مراجعة ${latestSubject?.name || 'المادة'} الآن تقوي نتيجتك القادمة`}</span>
               </div>
             </div>
             <div className="dashboard-focus-mark" aria-hidden="true"><BookOpen className="h-16 w-16" /><span>25</span></div>
@@ -228,7 +247,10 @@ export default function DashboardPage() {
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             {visibleSubjects.length > 0 ? visibleSubjects.map((subject, index) => {
               const theme = subjectThemes[index % subjectThemes.length];
-              const progress = index === 0 ? 34 : index === 1 ? 58 : 76;
+              const subjectResults = results.filter((result) => result.quizzes?.subject_id === subject.id);
+              const progress = subjectResults.length
+                ? Math.round(subjectResults.reduce((sum, result) => sum + result.score / result.total_questions, 0) / subjectResults.length * 100)
+                : 0;
               return (
                 <Link key={subject.id} href={`/subjects/${subject.id}`} className="dashboard-subject-card group" style={{ '--subject-surface': theme.surface, '--subject-accent': theme.accent, '--subject-soft': theme.soft, '--subject-delay': `${index * 90}ms` } as CSSProperties}>
                   <div className="flex items-start justify-between"><span className="dashboard-subject-icon"><BookOpen className="h-5 w-5" /></span><ArrowUpLeft className="h-5 w-5 text-[#77776f] transition-transform group-hover:-translate-x-1 group-hover:-translate-y-1" /></div>

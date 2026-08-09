@@ -110,8 +110,17 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen || aiOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    if (menuOpen || aiOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
   }, [menuOpen, aiOpen]);
 
   useEffect(() => {
@@ -206,12 +215,15 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
 
       {/* SIMPLIFIED MOBILE DRAWER */}
       {menuOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
-          <button className="absolute inset-0" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" />
-          <aside className="absolute inset-y-0 right-0 w-[min(88vw,360px)] overflow-y-auto border-l-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl space-y-6 text-right">
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 cursor-pointer" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" />
+          <aside
+            className="relative z-10 flex h-full max-h-[100dvh] w-[min(88vw,360px)] flex-col overflow-y-auto overscroll-contain border-l-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl space-y-6 text-right touch-pan-y"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
 
             {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-4">
+            <div className="flex shrink-0 items-center justify-between border-b-2 border-[#282825]/10 pb-4">
               <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3">
                 <span className="relative h-10 w-10 overflow-hidden rounded-xl border-2 border-[#282825] bg-white shadow-[2px_2px_0_#282825]">
                   <Image src="/images/logo.png" alt="" fill sizes="40px" className="object-contain p-1" />
@@ -224,13 +236,13 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </div>
 
             {/* AI Assistant Banner */}
-            <button onClick={() => { setMenuOpen(false); setAiOpen(true); }} className="flex w-full items-center gap-3 rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-4 shadow-[3px_3px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all cursor-pointer">
+            <button onClick={() => { setMenuOpen(false); setAiOpen(true); }} className="flex w-full shrink-0 items-center gap-3 rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-4 shadow-[3px_3px_0_#282825] hover:shadow-[4px_4px_0_#282825] transition-all cursor-pointer">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#282825] text-white shrink-0"><Bot className="h-5 w-5" /></span>
               <span className="text-right"><strong className="block text-sm font-black text-[#282825]">اسأل رفيق مسار الذكي</strong><small className="text-[#5f5f59] font-bold">شرح فوري وإجابات امتحانية</small></span>
             </button>
 
             {/* Core Section (2x2 Grid) */}
-            <div className="space-y-2">
+            <div className="space-y-2 shrink-0">
               <span className="text-xs font-black text-[#77776f] block px-1">الأقسام الأساسية</span>
               <div className="grid grid-cols-2 gap-2">
                 {coreItems.map((item) => {
@@ -255,7 +267,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </div>
 
             {/* Study Tools Group */}
-            <div className="space-y-2">
+            <div className="space-y-2 shrink-0">
               <span className="text-xs font-black text-[#77776f] block px-1">أدوات الدراسة والتحليل</span>
               <div className="grid grid-cols-1 gap-2">
                 {toolItems.map((item) => {
@@ -280,7 +292,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </div>
 
             {/* Community & Services Group */}
-            <div className="space-y-2">
+            <div className="space-y-2 shrink-0">
               <span className="text-xs font-black text-[#77776f] block px-1">المجتمع والخدمات</span>
               <div className="grid grid-cols-1 gap-2">
                 {communityItems.map((item) => {
@@ -305,7 +317,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </div>
 
             {/* Sign Out Button */}
-            <button onClick={signOut} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#282825] bg-[#ff5636] px-4 py-3 text-xs font-black text-white shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer">
+            <button onClick={signOut} className="flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-[#282825] bg-[#ff5636] px-4 py-3 text-xs font-black text-white shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all cursor-pointer">
               <LogOut className="h-4 w-4" /> تسجيل الخروج
             </button>
           </aside>
@@ -315,13 +327,16 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
       {/* AI CHAT MODAL */}
       {aiOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="المساعد الدراسي">
-          <button className="absolute inset-0" onClick={() => setAiOpen(false)} aria-label="إغلاق المساعد" />
-          <section className="relative flex h-full w-full max-w-[480px] flex-col border-r-2 border-[#282825] bg-[#fafaf7] shadow-2xl">
-            <header className="flex items-center justify-between border-b-2 border-[#282825] bg-[#ffd64d] p-5">
+          <div className="fixed inset-0 cursor-pointer" onClick={() => setAiOpen(false)} aria-label="إغلاق المساعد" />
+          <section
+            className="relative z-10 flex h-full max-h-[100dvh] w-full max-w-[480px] flex-col border-r-2 border-[#282825] bg-[#fafaf7] shadow-2xl touch-pan-y"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <header className="flex shrink-0 items-center justify-between border-b-2 border-[#282825] bg-[#ffd64d] p-5">
               <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#282825] bg-[#282825] text-[#ffd64d]"><Bot className="h-6 w-6" /></span><span><strong className="block text-base font-black text-[#282825]">رفيق مسار الذكي</strong><small className="text-[#5f5f59] font-bold">متصل ومستعد للمساعدة</small></span></div>
               <button onClick={() => setAiOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#282825] bg-white cursor-pointer hover:bg-[#ff5636] hover:text-white transition-colors" aria-label="إغلاق"><X className="h-5 w-5" /></button>
             </header>
-            <div className="flex-1 space-y-4 overflow-y-auto p-5 bg-dot-pattern-dense">
+            <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-5 bg-dot-pattern-dense">
               {messages.map((message, index) => (
                 <div key={index} className={`max-w-[88%] rounded-2xl border-2 border-[#282825] p-4 text-sm leading-7 transition-transform hover:scale-[1.01] ${message.sender === 'user' ? 'mr-auto bg-[#dcbcff] shadow-[3px_3px_0_#282825]' : 'ml-auto bg-white shadow-[3px_3px_0_#282825]'}`}>
                   <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-black text-[#282825] border-b border-[#282825]/10 pb-1">{message.sender === 'ai' ? <><Sparkles className="h-3 w-3 text-[#ff5636]" /> رفيق مسار الذكي</> : <><UserRound className="h-3 w-3 text-[#7c3aed]" /> أنت</>}</span>
@@ -336,7 +351,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
               <div ref={chatEndRef} />
             </div>
 
-            <form onSubmit={askAI} className="border-t-2 border-[#282825] bg-white p-4">
+            <form onSubmit={askAI} className="shrink-0 border-t-2 border-[#282825] bg-white p-4">
               <div className="flex gap-2">
                 <input
                   type="text"
