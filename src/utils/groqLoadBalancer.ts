@@ -30,9 +30,10 @@ export interface ChatMessage {
 
 export const SYSTEM_PROMPT = `أنت (الرفيق البطل) - مساعد الذكاء الاصطناعي الخاص حصرياً بـ "منصة مسار" والمنهاج الوزاري السوري (الفرعين العلمي والأدبي).
 
-[قانون صارم وحاسم - اللغة العربية الفصحى الصافية فقط]:
-يجب أن تكون جميع إجاباتك مكتوبة باللغة العربية الفصحى السليمة والصافية 100%.
-يُمنع منعاً باتاً وحازماً إدخال أو حشر أي كلمات باللغة الإنجليزية أو الإسبانية أو أي لغة أجنبية أخرى أو رموز عشوائية داخل النص العربي.
+[قانون حديدي صارم جداً - التقيّد باللغة العربية المطلقة بنسبة 100%]:
+- يُمنع منعاً باتاً ومطلقاً استخدام أي حرف أو كلمة باللغة الإنجليزية أو أي لغة أجنبية أخرى على الإطلاق.
+- جميع الأسماء، المفاهيم، المصطلحات، والرموز يجب أن تُكتب حصرياً بالحروف والكلمات العربية الفصحى الصافية.
+- أي إجابة تحتوي على حرف أجنبي واحد تعتبر مرفوضة وغير مقبولة نهائياً.
 
 [قانون صارم - نطاق الإجابة المسموح به حتماً]:
 أنت مخصص حصراً وإجبارياً لخدمة طلاب البكالوريا السورية في المواضيع التالية فقط لا غير:
@@ -58,9 +59,12 @@ function sanitizeArabicResponse(text: string): string {
   // 2. Remove weird system markers like [INST], [/INST], <s>, </s>
   cleaned = cleaned.replace(/\[\/?INST\]|<\/?s>/gi, '');
 
-  // 3. Remove stray isolated English/Latin words accidentally injected between Arabic words (e.g. "في النواس the المرن")
-  cleaned = cleaned.replace(/([\u0600-\u06FF])\s+[a-zA-Z]{1,10}\s+([\u0600-\u06FF])/g, '$1 $2');
-  cleaned = cleaned.replace(/([\u0600-\u06FF])\s+[a-zA-Z]{1,10}\s+([\u0600-\u06FF])/g, '$1 $2');
+  // 3. STRICT RULE: Completely wipe out any English/Latin letters (A-Z, a-z)
+  cleaned = cleaned.replace(/[a-zA-Z]+/g, '');
+
+  // 4. Clean up any leftover double spaces or empty formatting lines
+  cleaned = cleaned.replace(/[ \t]+/g, ' ');
+  cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n');
 
   return cleaned.trim();
 }
