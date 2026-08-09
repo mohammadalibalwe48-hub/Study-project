@@ -46,6 +46,14 @@ export function useStudyRoomCall({ roomId, userId, localVideoRef }: UseStudyRoom
     const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
     const mountedRoomRef = useRef<string | null>(null);
 
+    const micEnabledRef = useRef(micEnabled);
+    const cameraEnabledRef = useRef(cameraEnabled);
+
+    useEffect(() => {
+        micEnabledRef.current = micEnabled;
+        cameraEnabledRef.current = cameraEnabled;
+    }, [micEnabled, cameraEnabled]);
+
     const sendSignal = useCallback(async (recipientId: string | null, signalType: SignalType, payload: SignalPayload['payload']) => {
         if (!roomId || !userId) return;
         const { error } = await supabase.from('study_room_signals').insert({
@@ -212,16 +220,16 @@ export function useStudyRoomCall({ roomId, userId, localVideoRef }: UseStudyRoom
         if (!track) { void requestMedia(false); return; }
         track.enabled = !track.enabled;
         setMicEnabled(track.enabled);
-        void updateParticipantState(track.enabled, cameraEnabled);
-    }, [cameraEnabled, requestMedia, updateParticipantState]);
+        void updateParticipantState(track.enabled, cameraEnabledRef.current);
+    }, [requestMedia, updateParticipantState]);
 
     const toggleCamera = useCallback(() => {
         const track = localStreamRef.current?.getVideoTracks()[0];
         if (!track) { void requestMedia(true); return; }
         track.enabled = !track.enabled;
         setCameraEnabled(track.enabled);
-        void updateParticipantState(micEnabled, track.enabled);
-    }, [micEnabled, requestMedia, updateParticipantState]);
+        void updateParticipantState(micEnabledRef.current, track.enabled);
+    }, [requestMedia, updateParticipantState]);
 
     const cleanup = useCallback(async () => {
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -260,7 +268,7 @@ export function useStudyRoomCall({ roomId, userId, localVideoRef }: UseStudyRoom
             });
 
         const heartbeat = window.setInterval(() => {
-            void updateParticipantState(micEnabled, cameraEnabled);
+            void updateParticipantState(micEnabledRef.current, cameraEnabledRef.current);
         }, 30_000);
 
         return () => {
@@ -270,7 +278,7 @@ export function useStudyRoomCall({ roomId, userId, localVideoRef }: UseStudyRoom
             mountedRoomRef.current = null;
             void supabase.removeChannel(channel);
         };
-    }, [cameraEnabled, cleanup, handleSignal, loadParticipants, micEnabled, roomId, sendSignal, updateParticipantState, userId]);
+    }, [cleanup, handleSignal, loadParticipants, roomId, sendSignal, updateParticipantState, userId]);
 
     return { participants, remoteStreams, micEnabled, cameraEnabled, mediaError, toggleMic, toggleCamera, cleanup };
 }

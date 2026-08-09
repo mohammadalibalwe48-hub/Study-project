@@ -35,6 +35,14 @@ export function useCloudflareCalls({ roomId, userId, localVideoRef }: UseCloudfl
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const cfSessionIdRef = useRef<string | null>(null);
 
+  const micEnabledRef = useRef(micEnabled);
+  const cameraEnabledRef = useRef(cameraEnabled);
+
+  useEffect(() => {
+    micEnabledRef.current = micEnabled;
+    cameraEnabledRef.current = cameraEnabled;
+  }, [micEnabled, cameraEnabled]);
+
   // Check Cloudflare Calls availability and create session
   const initCloudflareSession = useCallback(async () => {
     try {
@@ -140,8 +148,8 @@ export function useCloudflareCalls({ roomId, userId, localVideoRef }: UseCloudfl
     }
     track.enabled = !track.enabled;
     setMicEnabled(track.enabled);
-    void updateParticipantState(track.enabled, cameraEnabled);
-  }, [cameraEnabled, requestMedia, updateParticipantState]);
+    void updateParticipantState(track.enabled, cameraEnabledRef.current);
+  }, [requestMedia, updateParticipantState]);
 
   const toggleCamera = useCallback(() => {
     const track = localStreamRef.current?.getVideoTracks()[0];
@@ -151,8 +159,8 @@ export function useCloudflareCalls({ roomId, userId, localVideoRef }: UseCloudfl
     }
     track.enabled = !track.enabled;
     setCameraEnabled(track.enabled);
-    void updateParticipantState(micEnabled, track.enabled);
-  }, [micEnabled, requestMedia, updateParticipantState]);
+    void updateParticipantState(micEnabledRef.current, track.enabled);
+  }, [requestMedia, updateParticipantState]);
 
   const cleanup = useCallback(async () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -178,14 +186,14 @@ export function useCloudflareCalls({ roomId, userId, localVideoRef }: UseCloudfl
     void loadParticipants();
 
     const interval = setInterval(() => {
-      void updateParticipantState(micEnabled, cameraEnabled);
+      void updateParticipantState(micEnabledRef.current, cameraEnabledRef.current);
     }, 30_000);
 
     return () => {
       clearInterval(interval);
       void cleanup();
     };
-  }, [cleanup, initCloudflareSession, loadParticipants, micEnabled, cameraEnabled, roomId, updateParticipantState, userId]);
+  }, [cleanup, initCloudflareSession, loadParticipants, roomId, updateParticipantState, userId]);
 
   return {
     participants,
