@@ -215,10 +215,10 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
 
       {/* SIMPLIFIED MOBILE DRAWER */}
       {menuOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 flex justify-start bg-black/50 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true">
           <div className="fixed inset-0 cursor-pointer" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" />
           <aside
-            className="relative z-10 flex h-full max-h-[100dvh] w-[min(88vw,360px)] flex-col overflow-y-auto overscroll-contain border-l-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl space-y-6 text-right touch-pan-y"
+            className="relative z-10 flex h-full max-h-[100dvh] w-[min(88vw,360px)] flex-col overflow-y-auto overscroll-contain border-r-2 border-[#282825] bg-[#fafaf7] p-5 shadow-2xl space-y-6 text-right touch-pan-y"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
 
@@ -326,10 +326,10 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
 
       {/* AI CHAT MODAL */}
       {aiOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="المساعد الدراسي">
+        <div className="fixed inset-0 z-50 flex justify-start bg-black/35 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="المساعد الدراسي">
           <div className="fixed inset-0 cursor-pointer" onClick={() => setAiOpen(false)} aria-label="إغلاق المساعد" />
           <section
-            className="relative z-10 flex h-full max-h-[100dvh] w-full max-w-[480px] flex-col border-r-2 border-[#282825] bg-[#fafaf7] shadow-2xl touch-pan-y"
+            className="relative z-10 flex h-full max-h-[100dvh] w-full max-w-[480px] flex-col border-l-2 border-[#282825] bg-[#fafaf7] shadow-2xl touch-pan-y"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
             <header className="flex shrink-0 items-center justify-between border-b-2 border-[#282825] bg-[#ffd64d] p-5">
