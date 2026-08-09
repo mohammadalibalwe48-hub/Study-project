@@ -9,6 +9,7 @@ export interface RoomParticipant {
     micEnabled: boolean;
     cameraEnabled: boolean;
     isOnline: boolean;
+    cfSessionId?: string;
 }
 
 export interface RemoteRoomStream {
@@ -46,11 +47,13 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const [micEnabled, setMicEnabled] = useState(false);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [mediaError, setMediaError] = useState('');
+    const [cfEngineActive, setCfEngineActive] = useState(false);
 
     const localStreamRef = useRef<MediaStream | null>(null);
     const peersRef = useRef(new Map<string, RTCPeerConnection>());
     const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+    const cfSessionIdRef = useRef<string | null>(null);
 
     const micEnabledRef = useRef(micEnabled);
     const cameraEnabledRef = useRef(cameraEnabled);
@@ -59,6 +62,26 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         micEnabledRef.current = micEnabled;
         cameraEnabledRef.current = cameraEnabled;
     }, [micEnabled, cameraEnabled]);
+
+    // Check Cloudflare Calls API availability
+    const initCloudflareEngine = useCallback(async () => {
+        try {
+            const res = await fetch('/api/cloudflare/calls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'create-session' }),
+            });
+            const data = await res.json();
+            if (data.configured && data.sessionId) {
+                cfSessionIdRef.current = data.sessionId;
+                setCfEngineActive(true);
+                return data;
+            }
+        } catch {
+            setCfEngineActive(false);
+        }
+        return null;
+    }, []);
 
     const sendSignal = useCallback((recipientId: string | null, type: SignalPayload['type'], extra?: any) => {
         if (!channelRef.current || !userId) return;
@@ -313,7 +336,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 };
             });
 
-            // Ensure current user is always included
             if (!initialList.some((p) => p.userId === userId)) {
                 initialList.unshift({
                     userId,
@@ -361,10 +383,9 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     useEffect(() => {
         if (!roomId || !userId) return;
 
-        // 1. Instantly load local user and DB members so participants is NEVER 0!
+        void initCloudflareEngine();
         void loadDbParticipants();
 
-        // 2. Subscribe to Supabase Realtime channel
         const channel = supabase.channel(`room-call:${roomId}`, {
             config: { presence: { key: userId } },
         });
@@ -386,7 +407,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 });
 
                 setParticipants((current) => {
-                    // Update online status & mic/camera state from presence
                     const merged = current.map((p) => {
                         const presence = presenceMap.get(p.userId);
                         if (presence) {
@@ -400,7 +420,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                         return p;
                     });
 
-                    // Add new presence members not in current list
                     presenceMap.forEach((presence, pid) => {
                         if (!merged.some((p) => p.userId === pid)) {
                             merged.push({
@@ -416,7 +435,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     return merged;
                 });
 
-                // Clean up disconnected peers
                 peersRef.current.forEach((_, remoteUserId) => {
                     if (!presenceMap.has(remoteUserId)) {
                         closePeer(remoteUserId);
@@ -462,16 +480,15 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             void supabase.removeChannel(channel);
             void cleanup();
         };
-    }, [cleanup, closePeer, createOffer, handleSignal, loadDbParticipants, profileName, roomId, sendSignal, userId]);
+    }, [cleanup, closePeer, createOffer, handleSignal, initCloudflareEngine, loadDbParticipants, profileName, roomId, sendSignal, userId]);
 
-    // Keep presence payload updated when mic/camera toggled
     useEffect(() => {
         if (!channelRef.current || !userId) return;
         void channelRef.current.track({
             user_id: userId,
             full_name: profileName,
             mic_enabled: micEnabled,
-            camera_enabled: cameraEnabled,
+            cameraEnabled: cameraEnabled,
             joined_at: new Date().toISOString(),
         });
     }, [micEnabled, cameraEnabled, profileName, userId]);
@@ -482,6 +499,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         micEnabled,
         cameraEnabled,
         mediaError,
+        cfEngineActive,
         toggleMic,
         toggleCamera,
         cleanup,

@@ -1,28 +1,28 @@
 import { NextResponse } from 'next/server';
 
-const CLOUDFLARE_CALLS_APP_ID = process.env.CLOUDFLARE_CALLS_APP_ID;
-const CLOUDFLARE_CALLS_APP_TOKEN = process.env.CLOUDFLARE_CALLS_APP_TOKEN;
-const BASE_URL = `https://rtc.live.cloudflare.com/v1/apps/${CLOUDFLARE_CALLS_APP_ID}`;
-
 export async function POST(request: Request) {
   try {
-    const { action, sessionId, trackId, tracks, sdp } = await request.json();
+    const appId = process.env.CLOUDFLARE_CALLS_APP_ID;
+    const appToken = process.env.CLOUDFLARE_CALLS_APP_TOKEN;
 
-    if (!CLOUDFLARE_CALLS_APP_ID || !CLOUDFLARE_CALLS_APP_TOKEN) {
+    if (!appId || !appToken) {
       return NextResponse.json({
         configured: false,
-        error: 'Cloudflare Calls API keys (CLOUDFLARE_CALLS_APP_ID, CLOUDFLARE_CALLS_APP_TOKEN) are not set in .env.local',
-      });
+        error: 'Cloudflare Calls API keys (CLOUDFLARE_CALLS_APP_ID, CLOUDFLARE_CALLS_APP_TOKEN) are not set.',
+      }, { status: 200 });
     }
 
+    const baseUrl = `https://rtc.live.cloudflare.com/v1/apps/${appId}`;
     const headers = {
-      'Authorization': `Bearer ${CLOUDFLARE_CALLS_APP_TOKEN}`,
+      'Authorization': `Bearer ${appToken}`,
       'Content-Type': 'application/json',
     };
 
+    const { action, sessionId, trackId, tracks, sdp } = await request.json();
+
     // 1. Create a new Cloudflare Calls WebRTC Session
     if (action === 'create-session') {
-      const res = await fetch(`${BASE_URL}/sessions/new`, {
+      const res = await fetch(`${baseUrl}/sessions/new`, {
         method: 'POST',
         headers,
       });
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'sessionId and trackId are required.' }, { status: 400 });
       }
 
-      const res = await fetch(`${BASE_URL}/sessions/${sessionId}/tracks/new`, {
+      const res = await fetch(`${baseUrl}/sessions/${sessionId}/tracks/new`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'sessionId and tracks array are required.' }, { status: 400 });
       }
 
-      const res = await fetch(`${BASE_URL}/sessions/${sessionId}/tracks/new`, {
+      const res = await fetch(`${baseUrl}/sessions/${sessionId}/tracks/new`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'sessionId and sdp are required.' }, { status: 400 });
       }
 
-      const res = await fetch(`${BASE_URL}/sessions/${sessionId}/renegotiate`, {
+      const res = await fetch(`${baseUrl}/sessions/${sessionId}/renegotiate`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({
