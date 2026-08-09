@@ -29,6 +29,7 @@ interface UseStudyRoomCallOptions {
 export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مسار', localVideoRef }: UseStudyRoomCallOptions) {
     const [participants, setParticipants] = useState<RoomParticipant[]>([]);
     const [remoteStreams, setRemoteStreams] = useState<RemoteRoomStream[]>([]);
+    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [micEnabled, setMicEnabled] = useState(false);
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [mediaError, setMediaError] = useState('');
@@ -38,6 +39,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const pulledTracksRef = useRef<Set<string>>(new Set());
+    const trackToUserMapRef = useRef<Map<string, string>>(new Map());
 
     const micEnabledRef = useRef(micEnabled);
     const cameraEnabledRef = useRef(cameraEnabled);
@@ -71,17 +73,20 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
             // Create RTCPeerConnection connected to Cloudflare SFU
             const pc = new RTCPeerConnection({
-                iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+                iceServers: [
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    { urls: 'stun:stun.l.google.com:19302' },
+                ],
             });
 
             pc.ontrack = (event) => {
                 const stream = event.streams[0] || new MediaStream([event.track]);
                 const trackId = event.track.id;
+                const remoteUserId = trackToUserMapRef.current.get(trackId) || trackId;
 
                 setRemoteStreams((current) => {
-                    const existing = current.find((s) => s.stream.id === stream.id);
-                    if (existing) return current;
-                    return [...current, { userId: trackId, stream }];
+                    const filtered = current.filter((s) => s.userId !== remoteUserId && s.stream.id !== stream.id);
+                    return [...filtered, { userId: remoteUserId, stream }];
                 });
             };
 
@@ -175,6 +180,12 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 const answer = await pcRef.current.createAnswer();
                 await pcRef.current.setLocalDescription(answer);
 
+                if (data.tracks && Array.isArray(data.tracks)) {
+                    data.tracks.forEach((t: any) => {
+                        if (t.mid) trackToUserMapRef.current.set(t.mid, remoteUserId);
+                    });
+                }
+
                 await fetch('/api/cloudflare/calls', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -219,6 +230,8 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     localStreamRef.current?.addTrack(track);
                 });
             }
+
+            setLocalStream(localStreamRef.current);
 
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = localStreamRef.current;
@@ -312,6 +325,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const cleanup = useCallback(async () => {
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
+        setLocalStream(null);
 
         if (localVideoRef.current) {
             localVideoRef.current.srcObject = null;
@@ -323,6 +337,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         }
 
         pulledTracksRef.current.clear();
+        trackToUserMapRef.current.clear();
         setRemoteStreams([]);
         setMicEnabled(false);
         setCameraEnabled(false);
@@ -359,7 +374,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     const merged = current.map((p) => {
                         const presence = presenceMap.get(p.userId);
                         if (presence) {
-                            // If remote participant published Cloudflare tracks, pull them!
                             if (presence.cf_session_id && presence.audio_track_id && p.userId !== userId) {
                                 void pullRemoteTrack(presence.cf_session_id, presence.audio_track_id, p.userId);
                             }
@@ -405,6 +419,9 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     return merged;
                 });
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, () => {
+                void loadDbParticipants();
+            })
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED') {
                     void channel.track({
@@ -443,6 +460,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     return {
         participants,
         remoteStreams,
+        localStream,
         micEnabled,
         cameraEnabled,
         mediaError,
