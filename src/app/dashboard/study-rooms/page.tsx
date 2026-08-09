@@ -1,444 +1,347 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useStudyRoomCall, type RemoteRoomStream, type RoomParticipant } from './useStudyRoomCall';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase/client';
-import Link from 'next/link';
 import SidebarLayout from '@/components/SidebarLayout';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
-import { awardXP, updateStreak, checkAndUnlockBadges } from '@/utils/xpHelper';
+import { awardXP } from '@/utils/xpHelper';
 import { focusAudio } from '@/utils/audioSynth';
-import { Target, Rocket, Brain, Pause, Play, RotateCcw, CloudRain, Sparkles, Coffee, MessageSquare, ArrowLeft } from 'lucide-react';
+import {
+  ArrowRight,
+  Brain,
+  CloudRain,
+  Coffee,
+  Headphones,
+  MessageSquare,
+  Mic,
+  MicOff,
+  Pause,
+  Play,
+  Plus,
+  Radio,
+  RotateCcw,
+  Sparkles,
+  UserRound,
+  Users,
+  Video,
+  VideoOff,
+  X,
+} from 'lucide-react';
 
 interface Subject {
   id: number;
   name: string;
-  description: string;
-  branch_id: number;
+  description: string | null;
 }
 
-interface RoomMessage {
-  id: number;
-  message: string;
-  created_at: string;
-  users?: {
-    full_name: string;
-  } | null;
-}
+type RoomMode = 'voice' | 'video' | 'both';
 
-interface PlannerTask {
-  id: number;
+interface StudyRoom {
+  id: string;
   title: string;
-  is_completed: boolean;
+  description: string;
+  mode: RoomMode;
+  capacity: number;
+  subject_id: number | null;
+  creator_id: string;
+  created_at: string;
+  members?: { user_id: string }[];
+  subjects?: { name: string }[] | null;
+}
+
+interface RoomForm {
+  title: string;
+  description: string;
+  mode: RoomMode;
+  capacity: number;
+  subjectId: string;
+}
+
+const defaultForm: RoomForm = {
+  title: '',
+  description: '',
+  mode: 'both',
+  capacity: 6,
+  subjectId: '',
+};
+
+const cardBgs = ['bg-[#ffdc72]', 'bg-[#bce9fa]', 'bg-[#d8bcff]', 'bg-[#cce6b4]'];
+
+type SupabaseFailure = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
+function getDatabaseError(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const failure = error as SupabaseFailure;
+    const details = [failure.message, failure.details, failure.hint, failure.code && `(${failure.code})`].filter(Boolean);
+    if (details.length > 0) return details.join(' — ');
+  }
+  return fallback;
 }
 
 export default function StudyRoomsPage() {
   const { user, profile, loading, signOut } = useAuth();
   const router = useRouter();
-
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+  const [rooms, setRooms] = useState<StudyRoom[]>([]);
   const [dbLoading, setDbLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState<RoomForm>(defaultForm);
+  const [error, setError] = useState('');
+  const [creating, setCreating] = useState(false);
 
-  const [timerDuration, setTimerDuration] = useState<number>(1500);
-  const [timerSecondsLeft, setTimerSecondsLeft] = useState<number>(1500);
-  const [timerActive, setTimerActive] = useState<boolean>(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [soundMode, setSoundMode] = useState<'off' | 'rain' | 'binaural' | 'hum'>('off');
-  const [soundVolume, setSoundVolume] = useState<number>(0.5);
-
+  const [selectedRoom, setSelectedRoom] = useState<StudyRoom | null>(null);
   const [chatMessages, setChatMessages] = useState<RoomMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  const [messageError, setMessageError] = useState('');
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  const [sessionTasks, setSessionTasks] = useState<PlannerTask[]>([]);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [timerDuration, setTimerDuration] = useState(1500);
+  const [timerSecondsLeft, setTimerSecondsLeft] = useState(1500);
+  const [timerActive, setTimerActive] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [soundMode, setSoundMode] = useState<'off' | 'rain' | 'binaural' | 'hum'>('off');
+  const [soundVolume, setSoundVolume] = useState(0.5);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth');
-    }
-  }, [user, loading, router]);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const roomChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const {
+    participants,
+    remoteStreams,
+    micEnabled,
+    cameraEnabled,
+    mediaError,
+    toggleMic,
+    toggleCamera,
+    cleanup: cleanupCall,
+  } = useStudyRoomCall({
+    roomId: selectedRoom?.id || null,
+    userId: user?.id || null,
+    localVideoRef,
+  });
 
-  useEffect(() => {
-    async function fetchSubjectsData() {
-      try {
-        setDbLoading(true);
-        const { data, error } = await supabase.from('subjects').select('*').order('id', { ascending: true });
-        if (error) throw error;
-        setSubjects(data || []);
-      } catch (err) {
-        console.error('Error fetching study room subjects:', err);
-      } finally {
-        setDbLoading(false);
-      }
+  const refreshRooms = useCallback(async () => {
+    // Keep the public directory independent from membership policies. Membership
+    // is fetched only after a room is opened, so directory loading cannot fail
+    // because a room-security helper is unavailable to the browser role.
+    const { data: roomData, error: roomError } = await supabase
+      .from('study_rooms')
+      .select('id,title,description,mode,capacity,subject_id,creator_id,created_at')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false });
+    if (roomError) throw roomError;
+
+    const baseRooms = (roomData || []) as StudyRoom[];
+    if (baseRooms.length === 0) {
+      setRooms([]);
+      return;
     }
-    fetchSubjectsData();
+
+    const subjectIds = [...new Set(baseRooms.flatMap((room) => room.subject_id === null ? [] : [room.subject_id]))];
+    const subjectResult = subjectIds.length > 0
+      ? await supabase.from('subjects').select('id,name').in('id', subjectIds)
+      : { data: [], error: null };
+    if (subjectResult.error) throw subjectResult.error;
+
+    const subjectNames = new Map((subjectResult.data || []).map((subject) => [subject.id, subject.name]));
+    setRooms(baseRooms.map((room) => ({
+      ...room,
+      subjects: room.subject_id && subjectNames.has(room.subject_id)
+        ? [{ name: subjectNames.get(room.subject_id)! }]
+        : null,
+    })));
   }, []);
 
-  const fetchRoomMessages = async (subjId: number) => {
-    try {
-      const { data, error } = await supabase
-        .from('room_messages')
-        .select(`
-          id,
-          message,
-          created_at,
-          users (
-            full_name
-          )
-        `)
-        .eq('subject_id', subjId)
-        .order('created_at', { ascending: true })
-        .limit(50);
+  useEffect(() => {
+    if (!loading && !user) router.push('/auth');
+  }, [loading, router, user]);
 
-      if (!error && data) {
-        setChatMessages(data as any || []);
-      }
-    } catch (err) {
-      console.error('Error fetching room messages:', err);
-    }
-  };
-
-  const fetchSessionTasks = async () => {
+  useEffect(() => {
     if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('planner_tasks')
-        .select('id, title, is_completed')
-        .eq('user_id', user.id)
-        .order('id', { ascending: false })
-        .limit(6);
+    let cancelled = false;
+    async function load() {
+      try {
+        setDbLoading(true);
+        setError('');
 
-      if (!error && data) {
-        setSessionTasks(data || []);
+        const { data: subjectData, error: subjectError } = await supabase
+          .from('subjects')
+          .select('id,name,description')
+          .order('id');
+        if (subjectError) throw subjectError;
+        if (!cancelled) setSubjects(subjectData || []);
+
+        await refreshRooms();
+      } catch (loadError) {
+        console.error('Study-room directory failed to load:', loadError);
+        if (!cancelled) setError(getDatabaseError(loadError, 'تعذر تحميل الغرف'));
+      } finally {
+        if (!cancelled) setDbLoading(false);
       }
-    } catch (err) {
-      console.error('Error fetching session tasks:', err);
     }
+    load();
+    return () => { cancelled = true; };
+  }, [refreshRooms, user]);
+
+  const createRoom = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!user || creating) return;
+    const title = form.title.trim();
+    if (title.length < 3) { setError('اكتب عنواناً واضحاً للغرفة (3 أحرف على الأقل).'); return; }
+    setCreating(true); setError('');
+    try {
+      const { data: room, error: roomError } = await supabase.from('study_rooms').insert({
+        creator_id: user.id,
+        subject_id: form.subjectId ? Number(form.subjectId) : null,
+        title,
+        description: form.description.trim(),
+        mode: form.mode,
+        capacity: form.capacity,
+        is_public: true,
+      }).select('id,title,description,mode,capacity,subject_id,creator_id,created_at').single();
+      if (roomError) throw roomError;
+      const { error: memberError } = await supabase.from('study_room_members').insert({ room_id: room.id, user_id: user.id, role: 'host' });
+      if (memberError) throw memberError;
+
+      const selectedSubject = subjects.find((subject) => subject.id === room.subject_id);
+      const createdRoom = {
+        ...room,
+        members: [{ user_id: user.id }],
+        subjects: selectedSubject ? [{ name: selectedSubject.name }] : null,
+      } as StudyRoom;
+      setRooms((current) => [createdRoom, ...current]);
+      setForm(defaultForm); setShowCreate(false); setSelectedRoom(createdRoom);
+    } catch (createError) {
+      console.error('Study room creation failed:', createError);
+      setError(getDatabaseError(createError, 'تعذر إنشاء الغرفة'));
+    } finally { setCreating(false); }
+  };
+
+  const joinRoom = async (room: StudyRoom) => {
+    if (!user) return;
+    setError('');
+    const { error: joinError } = await supabase.from('study_room_members').upsert(
+      { room_id: room.id, user_id: user.id, role: room.creator_id === user.id ? 'host' : 'member' },
+      { onConflict: 'room_id,user_id', ignoreDuplicates: true },
+    );
+    if (joinError) { setError(joinError.message.includes('full') ? 'الغرفة ممتلئة حالياً.' : 'تعذر الانضمام إلى الغرفة.'); return; }
+    setSelectedRoom(room);
+  };
+
+  const leaveRoom = async () => {
+    if (!user || !selectedRoom) return;
+    await cleanupCall();
+    await supabase.from('study_room_members').delete().eq('room_id', selectedRoom.id).eq('user_id', user.id);
+    setSelectedRoom(null); setChatMessages([]); setTimerActive(false);
+    await refreshRooms();
   };
 
   useEffect(() => {
-    if (selectedSubject) {
-      fetchRoomMessages(selectedSubject.id);
-      fetchSessionTasks();
-
-      const channel = supabase
-        .channel(`room_${selectedSubject.id}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `subject_id=eq.${selectedSubject.id}` },
-          () => {
-            fetchRoomMessages(selectedSubject.id);
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
+    if (!selectedRoom || !user) return;
+    let cancelled = false;
+    const roomId = selectedRoom.id;
+    async function loadRoom() {
+      const { data: messages } = await supabase.from('room_messages').select('id,message,created_at,users(full_name)').eq('room_id', roomId).order('created_at').limit(100);
+      if (!cancelled) setChatMessages((messages || []) as unknown as RoomMessage[]);
     }
-  }, [selectedSubject]);
+    loadRoom();
+    const channel = supabase.channel(`room:${selectedRoom.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${selectedRoom.id}` }, (payload) => {
+        setChatMessages((current) => current.some((message) => message.id === payload.new.id) ? current : [...current, payload.new as RoomMessage]);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${selectedRoom.id}` }, loadRoom)
+      .subscribe();
+    roomChannelRef.current = channel;
+    return () => { cancelled = true; roomChannelRef.current = null; supabase.removeChannel(channel); };
+  }, [selectedRoom, user]);
 
   useEffect(() => {
-    if (timerActive) {
-      timerRef.current = setInterval(() => {
-        setTimerSecondsLeft((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            setTimerActive(false);
-            if (user) {
-              awardXP(user.id, 30);
-            }
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    if (!timerActive) { if (timerRef.current) clearInterval(timerRef.current); return; }
+    timerRef.current = setInterval(() => setTimerSecondsLeft((current) => {
+      if (current <= 1) { setTimerActive(false); if (user) awardXP(user.id, 30); return 0; }
+      return current - 1;
+    }), 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [timerActive, user]);
 
-  const handleSoundToggle = (mode: 'rain' | 'binaural' | 'hum') => {
-    if (soundMode === mode) {
-      setSoundMode('off');
-      focusAudio.stopFocusSound();
-    } else {
-      setSoundMode(mode);
-      focusAudio.startFocusSound(mode, soundVolume);
-    }
+  useEffect(() => () => { focusAudio.stopFocusSound(); }, []);
+
+  const sendMessage = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!user || !selectedRoom) return;
+    const message = messageInput.trim().slice(0, 1000);
+    if (!message) return;
+    setMessageInput(''); setMessageError('');
+    const { error: sendError } = await supabase.from('room_messages').insert({ room_id: selectedRoom.id, user_id: user.id, message });
+    if (sendError) { setMessageInput(message); setMessageError('تعذر إرسال الرسالة. تأكد أنك ما زلت داخل الغرفة.'); }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!messageInput.trim() || !user || !selectedSubject) return;
+  const selectTimer = (duration: number) => { setTimerActive(false); setTimerDuration(duration); setTimerSecondsLeft(duration); };
+  const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 
-    const msgText = messageInput.trim();
-    setMessageInput('');
-
-    try {
-      const { error } = await supabase.from('room_messages').insert({
-        user_id: user.id,
-        subject_id: selectedSubject.id,
-        message: msgText,
-      });
-
-      if (error) throw error;
-      await fetchRoomMessages(selectedSubject.id);
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } catch (err) {
-      console.error('Error sending room message:', err);
-    }
-  };
-
-  const selectTimerPreset = (secs: number) => {
-    setTimerActive(false);
-    setTimerDuration(secs);
-    setTimerSecondsLeft(secs);
-  };
-
-  const formatTime = (totalSecs: number) => {
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  if (loading || dbLoading) {
-    return (
-      <SidebarLayout role={profile?.role} signOut={signOut}>
-        <div className="p-8">
-          <DashboardSkeleton />
-        </div>
-      </SidebarLayout>
-    );
-  }
+  if (loading || dbLoading) return <SidebarLayout role={profile?.role} signOut={signOut}><div className="p-8"><DashboardSkeleton /></div></SidebarLayout>;
 
   return (
     <SidebarLayout role={profile?.role} signOut={signOut}>
-      <main className="mx-auto w-full max-w-[1180px] space-y-8 text-right bg-dot-pattern py-4" dir="rtl">
-
-        {/* Top Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-[#282825] pb-6">
+      <main className="mx-auto w-full max-w-[1240px] space-y-7 bg-dot-pattern py-4 text-right" dir="rtl">
+        <header className="flex flex-col gap-5 border-b-2 border-[#282825] pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className="app-chip bg-[#ffd64d] border-2 border-[#282825] shadow-[2.5px_2.5px_0_#282825] font-black">
-              <Target className="h-4 w-4 text-[#ff5636]" /> غرف التركيز الافتراضية
-            </span>
-            <h1 className="mt-2 text-3xl font-black sm:text-5xl text-[#282825]">
-              مساحة المذاكرة التفاعلية
-            </h1>
-            <p className="text-[#5f5f59] text-sm max-w-xl leading-relaxed font-semibold mt-1">
-              انضم لغرفة المادة الدراسية، اضبط مؤقت البومودورو، استمع لأصوات التركيز الذهنية، وتبادل الأسئلة مع زملائك.
-            </p>
+            <span className="app-chip border-2 border-[#282825] bg-[#ffd64d] font-black shadow-[2.5px_2.5px_0_#282825]"><Radio className="h-4 w-4 text-[#ff5636]" /> غرف النقاش المباشر</span>
+            <h1 className="mt-3 text-3xl font-black text-[#282825] sm:text-5xl">ذاكر مع أشخاص يفهمون هدفك</h1>
+            <p className="mt-2 max-w-2xl text-sm font-semibold leading-relaxed text-[#5f5f59]">أنشئ غرفة لموضوع محدد، ناقش بهدوء، واستخدم الصوت أو الفيديو عندما تحتاج إلى شرح أسرع.</p>
           </div>
+          <button onClick={() => setShowCreate(true)} className="app-button flex items-center justify-center gap-2 border-2 border-[#282825] bg-[#ff5636] px-5 py-3 text-sm font-black text-white shadow-[3px_3px_0_#282825]"><Plus className="h-5 w-5" /> إنشاء غرفة</button>
+        </header>
 
-          {selectedSubject && (
-            <button
-              onClick={() => {
-                setSelectedSubject(null);
-                setTimerActive(false);
-                focusAudio.stopFocusSound();
-                setSoundMode('off');
-              }}
-              className="app-button border-2 border-[#282825] bg-white text-[#ff5636] px-5 py-2.5 text-xs font-black shadow-[2.5px_2.5px_0_#282825] hover:bg-[#ff5636] hover:text-white transition-all cursor-pointer"
-            >
-              ← اختيار غرفة أخرى
-            </button>
-          )}
-        </div>
+        {error && <div role="alert" className="flex items-center justify-between rounded-2xl border-2 border-[#ff5636] bg-[#fff0ed] p-4 text-sm font-bold text-[#9f2413]"><span>{error}</span><button aria-label="إغلاق التنبيه" onClick={() => setError('')}><X className="h-5 w-5" /></button></div>}
 
-        {!selectedSubject ? (
-          /* ROOM SELECTION GRID */
-          <div className="space-y-6">
-            <div className="flex justify-between items-center rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]">
-              <div>
-                <h2 className="text-xl font-black text-[#282825]">اختر غرفة المادة للانضمام لغرفة التركيز</h2>
-                <p className="text-xs font-bold text-[#5f5f59] mt-1">كل غرفة توفر بيئة تفاعلية ومؤقتات تخصصية وأصوات ذهنية لرفع التركيز.</p>
-              </div>
-              <span className="app-chip bg-[#bce9fa] border border-[#282825] text-xs font-black shadow-[1.5px_1.5px_0_#282825]">
-                {subjects.length} غرف متاحة
-              </span>
-            </div>
+        {!selectedRoom ? (
+          <section className="space-y-5">
+            <div className="flex flex-col gap-3 rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825] sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-black">الغرف المفتوحة الآن</h2><p className="mt-1 text-xs font-bold text-[#5f5f59]">حتى ٨ أشخاص في الغرفة الواحدة لتبقى المحادثة واضحة وسريعة.</p></div><span className="app-chip border border-[#282825] bg-[#bce9fa] text-xs font-black shadow-[1.5px_1.5px_0_#282825]">{rooms.length} غرفة</span></div>
+            {rooms.length === 0 ? <div className="rounded-2xl border-2 border-dashed border-[#282825] bg-white p-12 text-center"><Users className="mx-auto h-12 w-12 text-[#ff5636]" /><h3 className="mt-4 text-2xl font-black">ابدأ أول جلسة نقاش</h3><p className="mt-2 text-sm font-semibold text-[#5f5f59]">لا توجد غرف عامة حالياً. أنشئ غرفة ودع زملاءك ينضمون.</p></div> : <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{rooms.map((room, index) => { const memberCount = room.members?.length || 0; return <article key={room.id} className={`flex min-h-[245px] flex-col justify-between rounded-2xl border-2 border-[#282825] p-6 shadow-[4px_4px_0_#282825] ${cardBgs[index % cardBgs.length]}`}><div><div className="flex items-center justify-between gap-3"><span className="rounded-full border border-[#282825] bg-white px-3 py-1 text-[11px] font-black">{room.mode === 'voice' ? 'صوت فقط' : room.mode === 'video' ? 'فيديو' : 'صوت + فيديو'}</span><span className="flex items-center gap-1 text-xs font-black"><Users className="h-4 w-4" /> {memberCount}/{room.capacity}</span></div><h3 className="mt-5 text-2xl font-black">{room.title}</h3>{room.subjects?.[0]?.name && <p className="mt-1 text-xs font-black text-[#ff5636]">{room.subjects[0].name}</p>}<p className="mt-3 line-clamp-3 text-sm font-semibold leading-relaxed text-[#4a4a44]">{room.description || 'نقاش تعليمي مفتوح مع زملاء مسار.'}</p></div><button onClick={() => joinRoom(room)} disabled={memberCount >= room.capacity && !room.members?.some((member) => member.user_id === user?.id)} className="app-button mt-5 flex items-center justify-center gap-2 border-2 border-[#282825] bg-[#ff5636] py-3 text-xs font-black text-white shadow-[2px_2px_0_#282825] disabled:cursor-not-allowed disabled:bg-[#999]"><ArrowRight className="h-4 w-4" /> {room.members?.some((member) => member.user_id === user?.id) ? 'متابعة الدخول' : memberCount >= room.capacity ? 'الغرفة ممتلئة' : 'انضم الآن'}</button></article>; })}</div>}
+            <div className="rounded-2xl border-2 border-[#282825] bg-[#282825] p-5 text-white shadow-[4px_4px_0_#ff5636]"><div className="flex items-start gap-3"><Headphones className="mt-1 h-5 w-5 shrink-0 text-[#ffd64d]" /><div><h3 className="font-black">إرشاد سريع للجلسة</h3><p className="mt-1 text-sm font-semibold leading-relaxed text-white/75">استخدم سماعة لتقليل الصدى، وفعّل الكاميرا فقط عندما تحتاجها. غرف الفيديو تعمل بنظام اتصال مباشر ومناسبة للمجموعات الصغيرة.</p></div></div></div>
+          </section>
+        ) : <ActiveRoom room={selectedRoom} userId={user?.id || ''} profileName={profile?.full_name || user?.email || 'طالب مسار'} members={participants} remoteStreams={remoteStreams} chatMessages={chatMessages} messageInput={messageInput} setMessageInput={setMessageInput} sendMessage={sendMessage} messageError={messageError} chatEndRef={chatEndRef} leaveRoom={leaveRoom} timerDuration={timerDuration} timerSecondsLeft={timerSecondsLeft} timerActive={timerActive} setTimerActive={setTimerActive} selectTimer={selectTimer} formatTime={formatTime} soundMode={soundMode} soundVolume={soundVolume} setSoundVolume={setSoundVolume} setSoundMode={setSoundMode} micEnabled={micEnabled} cameraEnabled={cameraEnabled} toggleMic={toggleMic} toggleCamera={toggleCamera} localVideoRef={localVideoRef} mediaError={mediaError} />}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {subjects.map((sub, index) => {
-                const cardBgs = ['bg-[#ffdc72] neo-shadow-interactive-yellow', 'bg-[#bce9fa] neo-shadow-interactive-blue', 'bg-[#d8bcff] neo-shadow-interactive-purple', 'bg-[#cce6b4] neo-shadow-interactive-coral'];
-                const bg = cardBgs[index % cardBgs.length];
-
-                return (
-                  <div
-                    key={sub.id}
-                    className={`rounded-2xl border-2 border-[#282825] p-6 flex flex-col justify-between min-h-[250px] transition-all group text-right ${bg}`}
-                  >
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="app-chip bg-white border border-[#282825] px-3 py-1 text-[11px] font-black shadow-[1.5px_1.5px_0_#282825]">
-                          مقرر بكالوريا
-                        </span>
-                        <span className="app-chip bg-white border border-[#282825] px-2.5 py-0.5 text-xs font-black text-[#15803d] shadow-[1.5px_1.5px_0_#282825] flex items-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full bg-[#15803d] animate-pulse" />
-                          متاحة الآن
-                        </span>
-                      </div>
-
-                      <h3 className="text-3xl font-black text-[#282825] group-hover:text-[#ff5636] transition-colors">
-                        {sub.name}
-                      </h3>
-                      <p className="text-xs font-semibold text-[#4a4a44] leading-relaxed line-clamp-2">
-                        {sub.description || 'جلسات تكرار متباعد وحل تمارين مع زملائك بكفاءة عالية.'}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedSubject(sub);
-                        setTimerActive(false);
-                      }}
-                      className="app-button border-2 border-[#282825] bg-[#ff5636] text-white w-full py-3 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[4px_4px_0_#282825] hover:-translate-y-0.5 transition-all mt-6 cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <Rocket className="w-4 h-4 text-white" /> 
-                      <span>دخول غرفة {sub.name}</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          /* ACTIVE FOCUS ROOM VIEW */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            {/* TIMER & AUDIO */}
-            <div className="lg:col-span-7 flex flex-col gap-6">
-              <div className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-8 shadow-[6px_6px_0_#282825] flex flex-col items-center justify-center text-center space-y-6 bg-stripe-pattern">
-                <div className="flex items-center justify-between w-full border-b-2 border-[#282825]/15 pb-4">
-                  <h2 className="text-2xl font-black text-[#282825] flex items-center gap-2">
-                    غرفة {selectedSubject.name} <Brain className="w-6 h-6 text-[#ff5636]" />
-                  </h2>
-                  
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => selectTimerPreset(1500)}
-                      className={`rounded-xl border-2 border-[#282825] px-3.5 py-1 text-xs font-black transition-all ${
-                        timerDuration === 1500 ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]' : 'bg-white text-[#282825] shadow-[2px_2px_0_#282825]'
-                      }`}
-                    >
-                      25د بومودورو
-                    </button>
-                    <button
-                      onClick={() => selectTimerPreset(3000)}
-                      className={`rounded-xl border-2 border-[#282825] px-3.5 py-1 text-xs font-black transition-all ${
-                        timerDuration === 3000 ? 'bg-[#282825] text-white shadow-[2px_2px_0_#ff5636]' : 'bg-white text-[#282825] shadow-[2px_2px_0_#282825]'
-                      }`}
-                    >
-                      50د مركز
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-6xl sm:text-7xl font-black text-[#282825] tracking-widest font-mono">
-                  {formatTime(timerSecondsLeft)}
-                </div>
-
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setTimerActive(!timerActive)}
-                    className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-8 py-3 text-xs font-black shadow-[3px_3px_0_#282825] hover:shadow-[5px_5px_0_#282825] transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    {timerActive ? <><Pause className="w-4 h-4" /> إيقاف مؤقت</> : <><Play className="w-4 h-4 text-white fill-white" /> بدء التركيز</>}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setTimerActive(false);
-                      setTimerSecondsLeft(timerDuration);
-                    }}
-                    className="app-button border-2 border-[#282825] bg-white text-[#282825] px-6 py-3 text-xs font-black shadow-[2.5px_2.5px_0_#282825] flex items-center gap-1.5"
-                  >
-                    إعادة ضبط <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Sound Ambience */}
-              <div className="rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] space-y-4">
-                <h3 className="text-lg font-black text-[#282825]">أصوات التركيز والخلفية الذهنية</h3>
-                <div className="grid grid-cols-3 gap-3">
-                  <button
-                    onClick={() => handleSoundToggle('rain')}
-                    className={`py-3 rounded-xl border-2 border-[#282825] text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      soundMode === 'rain' ? 'bg-[#bce9fa] text-[#282825] shadow-[3px_3px_0_#282825]' : 'bg-white text-[#5f5f59] shadow-[2px_2px_0_#282825]'
-                    }`}
-                  >
-                    <CloudRain className="w-4 h-4 text-[#ff5636]" /> مطر ناعم
-                  </button>
-                  <button
-                    onClick={() => handleSoundToggle('binaural')}
-                    className={`py-3 rounded-xl border-2 border-[#282825] text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      soundMode === 'binaural' ? 'bg-[#ffd64d] text-[#282825] shadow-[3px_3px_0_#282825]' : 'bg-white text-[#5f5f59] shadow-[2px_2px_0_#282825]'
-                    }`}
-                  >
-                    <Sparkles className="w-4 h-4 text-[#ff5636]" /> موجات ألفا
-                  </button>
-                  <button
-                    onClick={() => handleSoundToggle('hum')}
-                    className={`py-3 rounded-xl border-2 border-[#282825] text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      soundMode === 'hum' ? 'bg-[#cce6b4] text-[#282825] shadow-[3px_3px_0_#282825]' : 'bg-white text-[#5f5f59] shadow-[2px_2px_0_#282825]'
-                    }`}
-                  >
-                    <Coffee className="w-4 h-4 text-[#ff5636]" /> مقهى هادئ
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* CHAT PANEL */}
-            <div className="lg:col-span-5 rounded-2xl border-2 border-[#282825] bg-white p-6 shadow-[5px_5px_0_#282825] flex flex-col h-[500px] justify-between">
-              <h3 className="text-xl font-black text-[#282825] border-b-2 border-[#282825]/10 pb-3 mb-3 flex items-center justify-between">
-                <span>شات الطلاب المباشر</span>
-                <MessageSquare className="w-5 h-5 text-[#ff5636]" />
-              </h3>
-
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {chatMessages.map((msg) => (
-                  <div key={msg.id} className="rounded-xl border border-[#282825]/20 bg-[#fafaf7] p-3 text-xs space-y-1">
-                    <div className="flex justify-between items-center text-[10px] font-black text-[#282825]">
-                      <span>{msg.users?.full_name || 'طالب مسار'}</span>
-                      <span className="text-[#77776f] font-normal">{new Date(msg.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <p className="text-[#282825] font-semibold leading-relaxed">{msg.message}</p>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t-2 border-[#282825]/10">
-                <input
-                  type="text"
-                  required
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder="اكتب استفسارك هنا..."
-                  className="flex-1 rounded-xl border-2 border-[#282825] bg-white px-4 py-2.5 text-xs font-semibold text-[#282825] placeholder-[#77776f] shadow-[2px_2px_0_#282825] focus:outline-none focus:border-[#ff5636]"
-                />
-                <button
-                  type="submit"
-                  className="app-button border-2 border-[#282825] bg-[#ff5636] text-white px-5 py-2.5 text-xs font-black shadow-[2px_2px_0_#282825] hover:shadow-[3.5px_3.5px_0_#282825] transition-all"
-                >
-                  إرسال
-                </button>
-              </form>
-            </div>
-
-          </div>
-        )}
-
+        {showCreate && <CreateRoomModal form={form} setForm={setForm} onSubmit={createRoom} onClose={() => setShowCreate(false)} creating={creating} subjects={subjects} />}
       </main>
     </SidebarLayout>
   );
 }
+
+function RemoteVideo({ stream, name }: { stream: MediaStream; name: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = stream;
+    void video.play().catch(() => undefined);
+    return () => { video.srcObject = null; };
+  }, [stream]);
+
+  return <div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#d8bcff]"><video ref={videoRef} autoPlay playsInline className="h-full min-h-56 w-full object-cover" /><span className="absolute bottom-3 right-3 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">{name}</span></div>;
+}
+
+
+interface RoomMessage { id: number; message: string; created_at: string; users?: { full_name: string }[] | null; }
+
+function CreateRoomModal({ form, setForm, onSubmit, onClose, creating, subjects }: { form: RoomForm; setForm: React.Dispatch<React.SetStateAction<RoomForm>>; onSubmit: (event: FormEvent) => void; onClose: () => void; creating: boolean; subjects: Subject[] }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#282825]/60 p-4" role="dialog" aria-modal="true" aria-labelledby="create-room-title"><form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl border-2 border-[#282825] bg-[#fafaf7] p-6 text-right shadow-[7px_7px_0_#282825]" dir="rtl"><div className="flex items-center justify-between"><h2 id="create-room-title" className="text-2xl font-black">إنشاء غرفة نقاش</h2><button type="button" aria-label="إغلاق" onClick={onClose}><X /></button></div><label className="mt-5 block text-sm font-black">اسم الغرفة<input required minLength={3} maxLength={80} value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="mt-2 w-full rounded-xl border-2 border-[#282825] bg-white p-3 font-semibold outline-none focus:border-[#ff5636]" placeholder="مثلاً: مراجعة قوانين نيوتن" /></label><label className="mt-4 block text-sm font-black">الوصف<textarea maxLength={500} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="mt-2 min-h-24 w-full rounded-xl border-2 border-[#282825] bg-white p-3 font-semibold outline-none focus:border-[#ff5636]" placeholder="ما الذي ستناقشونه؟" /></label><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-black">المادة<select value={form.subjectId} onChange={(event) => setForm((current) => ({ ...current, subjectId: event.target.value }))} className="mt-2 w-full rounded-xl border-2 border-[#282825] bg-white p-3 font-semibold"><option value="">بدون مادة محددة</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label><label className="text-sm font-black">السعة<select value={form.capacity} onChange={(event) => setForm((current) => ({ ...current, capacity: Number(event.target.value) }))} className="mt-2 w-full rounded-xl border-2 border-[#282825] bg-white p-3 font-semibold"><option value={2}>شخصان</option><option value={4}>٤ أشخاص</option><option value={6}>٦ أشخاص</option><option value={8}>٨ أشخاص</option></select></label></div><fieldset className="mt-4"><legend className="text-sm font-black">نوع الغرفة</legend><div className="mt-2 grid grid-cols-3 gap-2">{(['voice', 'video', 'both'] as RoomMode[]).map((mode) => <button key={mode} type="button" onClick={() => setForm((current) => ({ ...current, mode }))} className={`rounded-xl border-2 border-[#282825] p-3 text-xs font-black ${form.mode === mode ? 'bg-[#ffd64d] shadow-[2px_2px_0_#282825]' : 'bg-white'}`}>{mode === 'voice' ? 'صوت' : mode === 'video' ? 'فيديو' : 'كلاهما'}</button>)}</div></fieldset><div className="mt-6 flex gap-3"><button type="submit" disabled={creating} className="app-button flex-1 border-2 border-[#282825] bg-[#ff5636] p-3 font-black text-white disabled:opacity-60">{creating ? 'جاري الإنشاء…' : 'إنشاء وانضمام'}</button><button type="button" onClick={onClose} className="app-button border-2 border-[#282825] bg-white p-3 font-black">إلغاء</button></div></form></div>;
+}
+
+function ActiveRoom({ room, userId, profileName, members, remoteStreams, chatMessages, messageInput, setMessageInput, sendMessage, messageError, chatEndRef, leaveRoom, timerDuration, timerSecondsLeft, timerActive, setTimerActive, selectTimer, formatTime, soundMode, soundVolume, setSoundVolume, setSoundMode, micEnabled, cameraEnabled, toggleMic, toggleCamera, localVideoRef, mediaError }: { room: StudyRoom; userId: string; profileName: string; members: RoomParticipant[]; remoteStreams: RemoteRoomStream[]; chatMessages: RoomMessage[]; messageInput: string; setMessageInput: (value: string) => void; sendMessage: (event: FormEvent) => void; messageError: string; chatEndRef: React.RefObject<HTMLDivElement | null>; leaveRoom: () => void; timerDuration: number; timerSecondsLeft: number; timerActive: boolean; setTimerActive: (value: boolean) => void; selectTimer: (duration: number) => void; formatTime: (seconds: number) => string; soundMode: 'off' | 'rain' | 'binaural' | 'hum'; soundVolume: number; setSoundVolume: (value: number) => void; setSoundMode: (value: 'off' | 'rain' | 'binaural' | 'hum') => void; micEnabled: boolean; cameraEnabled: boolean; toggleMic: () => void; toggleCamera: () => void; localVideoRef: React.RefObject<HTMLVideoElement | null>; mediaError: string }) {
+  const stopSound = () => { focusAudio.stopFocusSound(); setSoundMode('off'); };
+  const toggleSound = (mode: 'rain' | 'binaural' | 'hum') => { if (soundMode === mode) stopSound(); else { setSoundMode(mode); focusAudio.startFocusSound(mode, soundVolume); } };
+  return <section className="space-y-6"><header className="flex flex-col gap-4 border-b-2 border-[#282825] pb-5 sm:flex-row sm:items-center sm:justify-between"><div><span className="app-chip border-2 border-[#282825] bg-[#bce9fa] font-black"><Radio className="h-4 w-4" /> متصل الآن</span><h2 className="mt-2 text-3xl font-black">{room.title}</h2><p className="mt-1 text-sm font-semibold text-[#5f5f59]">{members.length} من {room.capacity} مشاركين · {room.mode === 'both' ? 'صوت وفيديو' : room.mode === 'voice' ? 'صوت' : 'فيديو'}</p></div><button onClick={leaveRoom} className="app-button flex items-center justify-center gap-2 border-2 border-[#282825] bg-white px-5 py-3 text-sm font-black text-[#ff5636] shadow-[2px_2px_0_#282825]"><X className="h-4 w-4" /> مغادرة الغرفة</button></header><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]"><div className="space-y-6"><div className="grid gap-3 sm:grid-cols-2">{remoteStreams.map((remote) => <RemoteVideo key={remote.userId} stream={remote.stream} name={members.find((member) => member.userId === remote.userId)?.fullName || 'طالب مسار'} />)}<div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#ff5636]">{cameraEnabled ? <video ref={localVideoRef} muted playsInline className="h-full min-h-56 w-full object-cover" /> : <div className="flex min-h-56 flex-col items-center justify-center text-white"><UserRound className="h-12 w-12 text-[#ffd64d]" /><p className="mt-2 font-black">{profileName}</p><span className="mt-1 text-xs font-semibold text-white/60">أنت</span></div>}<span className="absolute bottom-3 right-3 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">أنت</span></div><div className="rounded-2xl border-2 border-[#282825] bg-white p-4 shadow-[3px_3px_0_#282825]"><h3 className="font-black">المشاركون المتصلون</h3><div className="mt-4 space-y-2">{members.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-xl bg-[#fafaf7] p-3 text-sm font-bold"><UserRound className="h-4 w-4 text-[#ff5636]" />{member.userId === userId ? `${member.fullName} (أنت)` : member.fullName}<span className={`mr-auto h-2 w-2 rounded-full ${member.isOnline ? 'bg-[#5fae44]' : 'bg-[#999]'}`} /></div>)}</div></div></div><div className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-6 text-center shadow-[4px_4px_0_#282825]"><div className="flex flex-wrap justify-center gap-3"><button onClick={toggleMic} className={`app-button flex items-center gap-2 border-2 border-[#282825] px-4 py-3 text-xs font-black shadow-[2px_2px_0_#282825] ${micEnabled ? 'bg-white' : 'bg-[#ff5636] text-white'}`}>{micEnabled ? <Mic /> : <MicOff />} {micEnabled ? 'الميكروفون يعمل' : 'تشغيل الميكروفون'}</button><button onClick={toggleCamera} className={`app-button flex items-center gap-2 border-2 border-[#282825] px-4 py-3 text-xs font-black shadow-[2px_2px_0_#282825] ${cameraEnabled ? 'bg-white' : 'bg-[#ff5636] text-white'}`}>{cameraEnabled ? <Video /> : <VideoOff />} {cameraEnabled ? 'الكاميرا تعمل' : 'تشغيل الكاميرا'}</button></div>{mediaError && <p role="alert" className="mt-3 text-xs font-bold text-[#9f2413]">{mediaError}</p>}</div><div className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><div className="flex items-center justify-between"><h3 className="flex items-center gap-2 font-black"><Brain className="h-5 w-5 text-[#ff5636]" /> مؤقت التركيز</h3><div className="flex gap-2"><button onClick={() => selectTimer(1500)} className={`rounded-lg border-2 border-[#282825] px-2 py-1 text-[10px] font-black ${timerDuration === 1500 ? 'bg-[#282825] text-white' : 'bg-white'}`}>٢٥د</button><button onClick={() => selectTimer(3000)} className={`rounded-lg border-2 border-[#282825] px-2 py-1 text-[10px] font-black ${timerDuration === 3000 ? 'bg-[#282825] text-white' : 'bg-white'}`}>٥٠د</button></div></div><p className="my-4 text-center font-mono text-5xl font-black">{formatTime(timerSecondsLeft)}</p><div className="flex justify-center gap-2"><button onClick={() => setTimerActive(!timerActive)} className="app-button flex items-center gap-2 border-2 border-[#282825] bg-[#ff5636] px-4 py-2 text-xs font-black text-white shadow-[2px_2px_0_#282825]">{timerActive ? <Pause /> : <Play />} {timerActive ? 'إيقاف' : 'بدء'}</button><button onClick={() => { setTimerActive(false); selectTimer(timerDuration); }} className="app-button flex items-center gap-2 border-2 border-[#282825] bg-white px-4 py-2 text-xs font-black shadow-[2px_2px_0_#282825]"><RotateCcw /> إعادة</button></div></div><div className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><h3 className="font-black">أجواء التركيز</h3><div className="mt-3 grid grid-cols-3 gap-2">{([['rain', 'مطر', CloudRain], ['binaural', 'ألفا', Sparkles], ['hum', 'مقهى', Coffee]] as const).map(([mode, label, Icon]) => <button key={mode} onClick={() => toggleSound(mode)} className={`rounded-xl border-2 border-[#282825] p-2 text-xs font-black ${soundMode === mode ? 'bg-[#ffd64d]' : 'bg-white'}`}><Icon className="mx-auto h-4 w-4 text-[#ff5636]" />{label}</button>)}</div><label className="mt-3 block text-xs font-bold">مستوى الصوت<input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={(event) => { const volume = Number(event.target.value); setSoundVolume(volume); if (soundMode !== 'off') focusAudio.setVolume(volume); }} className="mt-2 w-full accent-[#ff5636]" /></label></div></div><div className="flex min-h-[620px] flex-col rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><h3 className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-3 font-black"><span>نقاش الغرفة</span><MessageSquare className="h-5 w-5 text-[#ff5636]" /></h3><div className="flex-1 space-y-3 overflow-y-auto py-4">{chatMessages.length === 0 && <p className="py-8 text-center text-sm font-semibold text-[#77776f]">ابدأوا النقاش برسالة قصيرة ومحترمة.</p>}{chatMessages.map((message) => <article key={message.id} className="rounded-xl border border-[#282825]/20 bg-[#fafaf7] p-3"><div className="flex items-center justify-between text-[10px] font-black"><span>{message.users?.[0]?.full_name || 'طالب مسار'}</span><time className="font-normal text-[#77776f]">{new Date(message.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</time></div><p className="mt-1 text-sm font-semibold leading-relaxed">{message.message}</p></article>)}<div ref={chatEndRef} /></div><form onSubmit={sendMessage} className="flex gap-2 border-t-2 border-[#282825]/10 pt-3"><label className="sr-only" htmlFor="room-message">رسالة الغرفة</label><input id="room-message" maxLength={1000} value={messageInput} onChange={(event) => setMessageInput(event.target.value)} placeholder="شارك فكرة أو سؤالاً…" className="min-w-0 flex-1 rounded-xl border-2 border-[#282825] p-3 text-sm font-semibold outline-none focus:border-[#ff5636]" /><button className="app-button border-2 border-[#282825] bg-[#ff5636] px-4 text-xs font-black text-white shadow-[2px_2px_0_#282825]">إرسال</button></form>{messageError && <p role="alert" className="mt-2 text-xs font-bold text-[#9f2413]">{messageError}</p>}</div></div></section>;
+}
+
+

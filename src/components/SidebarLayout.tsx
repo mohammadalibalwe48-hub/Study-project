@@ -16,6 +16,7 @@ import {
   Grid2X2,
   Headphones,
   Home,
+  PanelsTopLeft,
   Library,
   LogOut,
   Menu,
@@ -59,6 +60,7 @@ const navigation: NavigationItem[] = [
   { label: 'المكتبة', href: '/library', icon: Library, group: 'tools' },
 
   { label: 'المدرسون', href: '/mentors', icon: UserCheck, group: 'community' },
+  { label: 'غرف الدراسة', href: '/dashboard/study-rooms', icon: PanelsTopLeft, group: 'community' },
   { label: 'المجتمع', href: '/forum', icon: MessageCircle, group: 'community' },
   { label: 'الصدارة والأوائل', href: '/leaderboard', icon: Trophy, group: 'community' },
   { label: 'الملف الشخصي', href: '/profile', icon: UserRound, group: 'community' },
