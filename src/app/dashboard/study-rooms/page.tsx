@@ -125,6 +125,7 @@ export default function StudyRoomsPage() {
   } = useStudyRoomCall({
     roomId: selectedRoom?.id || null,
     userId: user?.id || null,
+    profileName: profile?.full_name || user?.email || 'طالب مسار',
     localVideoRef,
   });
 
@@ -319,16 +320,36 @@ export default function StudyRoomsPage() {
 
 function RemoteVideo({ stream, name }: { stream: MediaStream; name: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.srcObject = stream;
-    void video.play().catch(() => undefined);
-    return () => { video.srcObject = null; };
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      void videoRef.current.play().catch(() => undefined);
+    }
+    if (audioRef.current) {
+      audioRef.current.srcObject = stream;
+      void audioRef.current.play().catch(() => undefined);
+    }
   }, [stream]);
 
-  return <div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#d8bcff]"><video ref={videoRef} autoPlay playsInline className="h-full min-h-56 w-full object-cover" /><span className="absolute bottom-3 right-3 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">{name}</span></div>;
+  const hasVideoTrack = stream.getVideoTracks().length > 0 && stream.getVideoTracks().some((t) => t.enabled);
+
+  return (
+    <div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#d8bcff]">
+      <audio ref={audioRef} autoPlay playsInline />
+      {hasVideoTrack ? (
+        <video ref={videoRef} autoPlay playsInline className="h-full min-h-56 w-full object-cover" />
+      ) : (
+        <div className="flex min-h-56 flex-col items-center justify-center text-white">
+          <UserRound className="h-12 w-12 text-[#bce9fa]" />
+          <p className="mt-2 font-black">{name}</p>
+          <span className="mt-1 text-xs font-semibold text-white/60">صوتي مباشر</span>
+        </div>
+      )}
+      <span className="absolute bottom-3 right-3 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">{name}</span>
+    </div>
+  );
 }
 
 
