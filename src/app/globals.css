@@ -36,14 +36,21 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
-html {
-  scroll-behavior: smooth;
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 body {
-  min-height: 100vh;
+  min-height: 100%;
   overflow-x: hidden;
   margin: 0;
   color: var(--foreground);
@@ -51,6 +58,13 @@ body {
   background: var(--background);
   line-height: 1.6;
   transition: background-color .25s ease, color .25s ease;
+}
+
+/* Prevent auto-zooming and screen shifting on mobile input tap */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 body::before {

@@ -164,8 +164,8 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
   }
 
   return (
-    <div className="min-h-screen bg-[#b9ced8] p-0 text-[#171714] lg:h-screen lg:p-6 xl:p-8" dir="rtl">
-      <div className="app-shell relative mx-auto flex min-h-screen w-full max-w-[1480px] overflow-hidden bg-[#fafaf7] lg:h-full lg:min-h-0 lg:rounded-[28px]">
+    <div className="h-screen h-[100dvh] w-full overflow-hidden bg-[#b9ced8] p-0 text-[#171714] lg:p-6 xl:p-8" dir="rtl">
+      <div className="app-shell relative mx-auto flex h-full w-full max-w-[1480px] overflow-hidden bg-[#fafaf7] lg:rounded-[28px]">
 
         {/* LIGHT DESKTOP SIDEBAR */}
         <aside className="hidden min-h-0 w-[76px] shrink-0 flex-col items-center overflow-visible border-l border-[#deddd7] bg-[#f5f4ee] py-3 lg:flex">
@@ -209,7 +209,7 @@ export default function SidebarLayout({ children, role, signOut }: SidebarLayout
             </Link>
           </header>
 
-          <main className="motion-surface min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
+          <main className="motion-surface min-w-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y p-4 sm:p-6 lg:p-8">{children}</main>
         </section>
       </div>
 
