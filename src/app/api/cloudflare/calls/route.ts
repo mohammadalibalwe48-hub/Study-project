@@ -1,113 +1,74 @@
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
+type CallsBody = {
+  action?: 'create-session' | 'new-track' | 'pull-tracks' | 'renegotiate';
+  sessionId?: string;
+  trackId?: string;
+  tracks?: Array<{ location: 'remote'; sessionId: string; trackName: string }>;
+  sdp?: RTCSessionDescriptionInit;
+};
+
+function jsonError(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function POST(request: Request) {
+  const appId = process.env.CLOUDFLARE_CALLS_APP_ID;
+  const appToken = process.env.CLOUDFLARE_CALLS_APP_TOKEN;
+  if (!appId || !appToken) return jsonError('Cloudflare Calls is not configured on the server.', 503);
+
   try {
-    const appId = process.env.CLOUDFLARE_CALLS_APP_ID;
-    const appToken = process.env.CLOUDFLARE_CALLS_APP_TOKEN;
+    const body = await request.json() as CallsBody;
+    const baseUrl = `https://rtc.live.cloudflare.com/v1/apps/${encodeURIComponent(appId)}`;
+    const headers = { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' };
 
-    if (!appId || !appToken) {
-      return NextResponse.json({
-        configured: false,
-        error: 'Cloudflare Calls API keys (CLOUDFLARE_CALLS_APP_ID, CLOUDFLARE_CALLS_APP_TOKEN) are not set.',
-      }, { status: 200 });
-    }
-
-    const baseUrl = `https://rtc.live.cloudflare.com/v1/apps/${appId}`;
-    const headers = {
-      'Authorization': `Bearer ${appToken}`,
-      'Content-Type': 'application/json',
+    const forward = async (path: string, method: 'POST' | 'PUT', payload?: object) => {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: payload ? JSON.stringify(payload) : undefined,
+        cache: 'no-store',
+      });
+      const text = await response.text();
+      let data: Record<string, unknown> = {};
+      try { data = text ? JSON.parse(text) as Record<string, unknown> : {}; } catch { data = { details: text }; }
+      if (!response.ok) {
+        console.error('Cloudflare Calls API rejected request:', response.status, data);
+        return NextResponse.json({ error: 'Cloudflare Calls rejected the request.', details: data }, { status: response.status });
+      }
+      return NextResponse.json({ configured: true, ...data });
     };
 
-    const { action, sessionId, trackId, tracks, sdp } = await request.json();
+    if (body.action === 'create-session') return forward('/sessions/new', 'POST');
+    if (!body.sessionId) return jsonError('sessionId is required.', 400);
+    const sessionPath = `/sessions/${encodeURIComponent(body.sessionId)}`;
 
-    // 1. Create a new Cloudflare Calls WebRTC Session
-    if (action === 'create-session') {
-      const res = await fetch(`${baseUrl}/sessions/new`, {
-        method: 'POST',
-        headers,
+    if (body.action === 'new-track') {
+      if (!body.trackId || !body.sdp) return jsonError('trackId and sdp are required.', 400);
+      return forward(`${sessionPath}/tracks/new`, 'POST', {
+        sessionDescription: body.sdp,
+        tracks: [{ location: 'local', mid: body.trackId, trackName: body.trackId }],
       });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        return NextResponse.json({ error: `Cloudflare API error: ${errorText}` }, { status: res.status });
-      }
-
-      const data = await res.json();
-      return NextResponse.json({ configured: true, sessionId: data.sessionId, sessionDescription: data.sessionDescription });
     }
 
-    // 2. Publish local track to Cloudflare Calls SFU
-    if (action === 'new-track') {
-      if (!sessionId || !trackId) {
-        return NextResponse.json({ error: 'sessionId and trackId are required.' }, { status: 400 });
-      }
-
-      const res = await fetch(`${baseUrl}/sessions/${sessionId}/tracks/new`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          tracks: [{ trackName: trackId }],
-        }),
+    if (body.action === 'pull-tracks') {
+      if (!body.sdp || !body.tracks?.length) return jsonError('tracks and sdp are required.', 400);
+      return forward(`${sessionPath}/tracks/new`, 'POST', {
+        sessionDescription: body.sdp,
+        tracks: body.tracks,
       });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        return NextResponse.json({ error: `Cloudflare Track error: ${errorText}` }, { status: res.status });
-      }
-
-      const data = await res.json();
-      return NextResponse.json({ configured: true, ...data });
     }
 
-    // 3. Pull remote tracks from Cloudflare Calls SFU
-    if (action === 'pull-tracks') {
-      if (!sessionId || !Array.isArray(tracks)) {
-        return NextResponse.json({ error: 'sessionId and tracks array are required.' }, { status: 400 });
-      }
-
-      const res = await fetch(`${baseUrl}/sessions/${sessionId}/tracks/new`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          tracks,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        return NextResponse.json({ error: `Cloudflare Pull error: ${errorText}` }, { status: res.status });
-      }
-
-      const data = await res.json();
-      return NextResponse.json({ configured: true, ...data });
+    if (body.action === 'renegotiate') {
+      if (!body.sdp) return jsonError('sdp is required.', 400);
+      return forward(`${sessionPath}/renegotiate`, 'PUT', { sessionDescription: body.sdp });
     }
 
-    // 4. Renegotiate Session SDP with Cloudflare Calls
-    if (action === 'renegotiate') {
-      if (!sessionId || !sdp) {
-        return NextResponse.json({ error: 'sessionId and sdp are required.' }, { status: 400 });
-      }
-
-      const res = await fetch(`${baseUrl}/sessions/${sessionId}/renegotiate`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          sessionDescription: sdp,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        return NextResponse.json({ error: `Cloudflare Renegotiate error: ${errorText}` }, { status: res.status });
-      }
-
-      const data = await res.json();
-      return NextResponse.json({ configured: true, ...data });
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  } catch (error: any) {
-    console.error('Cloudflare Calls Route Error:', error);
-    return NextResponse.json({ error: error?.message || 'Server Error' }, { status: 500 });
+    return jsonError('Invalid action.', 400);
+  } catch (error) {
+    console.error('Cloudflare Calls route failed:', error);
+    return jsonError(error instanceof Error ? error.message : 'Unexpected server error.', 500);
   }
 }

@@ -134,12 +134,12 @@ export default function StudyRoomsPage() {
   const refreshRooms = useCallback(async () => {
     const { data: roomData, error: roomError } = await supabase
       .from('study_rooms')
-      .select('id,title,description,mode,capacity,subject_id,creator_id,created_at')
+      .select('id,title,description,mode,capacity,subject_id,creator_id,created_at,study_room_members(user_id)')
       .eq('is_public', true)
       .order('created_at', { ascending: false });
     if (roomError) throw roomError;
 
-    const baseRooms = (roomData || []) as StudyRoom[];
+    const baseRooms = (roomData || []) as unknown as StudyRoom[];
     if (baseRooms.length === 0) {
       setRooms([]);
       return;
@@ -154,6 +154,7 @@ export default function StudyRoomsPage() {
     const subjectNames = new Map((subjectResult.data || []).map((subject) => [subject.id, subject.name]));
     setRooms(baseRooms.map((room) => ({
       ...room,
+      members: room.members || [],
       subjects: room.subject_id && subjectNames.has(room.subject_id)
         ? [{ name: subjectNames.get(room.subject_id)! }]
         : null,
@@ -229,11 +230,11 @@ export default function StudyRoomsPage() {
   const joinRoom = async (room: StudyRoom) => {
     if (!user) return;
     setError('');
-    const { error: joinError } = await supabase.from('study_room_members').upsert(
-      { room_id: room.id, user_id: user.id, role: room.creator_id === user.id ? 'host' : 'member' },
-      { onConflict: 'room_id,user_id', ignoreDuplicates: true },
-    );
-    if (joinError) { setError(joinError.message.includes('full') ? 'الغرفة ممتلئة حالياً.' : 'تعذر الانضمام إلى الغرفة.'); return; }
+    const { error: joinError } = await supabase.rpc('join_study_room', { p_room_id: room.id });
+    if (joinError) {
+      setError(joinError.message.toLowerCase().includes('full') ? 'الغرفة ممتلئة حالياً.' : 'تعذر الانضمام إلى الغرفة.');
+      return;
+    }
     setSelectedRoom(room);
   };
 
@@ -258,11 +259,14 @@ export default function StudyRoomsPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${selectedRoom.id}` }, (payload) => {
         setChatMessages((current) => current.some((message) => message.id === payload.new.id) ? current : [...current, payload.new as RoomMessage]);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${selectedRoom.id}` }, loadRoom)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${selectedRoom.id}` }, async () => {
+        await loadRoom();
+        await refreshRooms();
+      })
       .subscribe();
     roomChannelRef.current = channel;
     return () => { cancelled = true; roomChannelRef.current = null; supabase.removeChannel(channel); };
-  }, [selectedRoom, user]);
+  }, [refreshRooms, selectedRoom, user]);
 
   useEffect(() => {
     if (!timerActive) { if (timerRef.current) clearInterval(timerRef.current); return; }
@@ -367,8 +371,8 @@ function RemoteVideo({ stream, name }: { stream: MediaStream; name: string }) {
 
   return (
     <div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#d8bcff]">
-      <audio ref={audioRef} autoPlay playsInline />
-      <video ref={videoRef} autoPlay playsInline className="h-full min-h-56 w-full object-cover" />
+      <audio ref={audioRef} autoPlay playsInline controls={false} />
+      <video ref={videoRef} autoPlay muted={false} playsInline className="h-full min-h-56 w-full object-cover" />
       <span className="absolute bottom-3 right-3 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">{name}</span>
     </div>
   );
