@@ -6,6 +6,7 @@ type CallsBody = {
   action?: 'create-session' | 'new-track' | 'pull-tracks' | 'renegotiate';
   sessionId?: string;
   trackId?: string;
+  mid?: string;
   tracks?: Array<{ location: 'remote'; sessionId: string; trackName: string }>;
   sdp?: RTCSessionDescriptionInit;
 };
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
       if (!body.trackId || !body.sdp) return jsonError('trackId and sdp are required.', 400);
       return forward(`${sessionPath}/tracks/new`, 'POST', {
         sessionDescription: body.sdp,
-        tracks: [{ location: 'local', mid: body.trackId, trackName: body.trackId }],
+        tracks: [{ location: 'local', mid: body.mid, trackName: body.trackId }],
       });
     }
 

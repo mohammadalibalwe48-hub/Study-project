@@ -97,19 +97,28 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         try {
             const data = await cloudflare({ action: 'create-session' });
             if (!data.configured || !data.sessionId) throw new Error('Cloudflare Calls is not configured');
+            if (!channelRef.current) return null;
             const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }] });
+            
             pc.ontrack = (event) => {
                 const stream = event.streams[0] || new MediaStream([event.track]);
-                const remoteUserId = trackToUserRef.current.get(event.transceiver.mid || '') || trackToUserRef.current.get(event.track.id) || event.track.id;
+                const mid = event.transceiver?.mid || '';
+                const remoteUserId = trackToUserRef.current.get(mid) || trackToUserRef.current.get(event.track.id) || event.track.id;
                 setRemoteStreams((current) => {
-                    const existing = current.find((item) => item.userId === remoteUserId);
-                    if (existing) {
-                        if (!existing.stream.getTracks().some((track) => track.id === event.track.id)) existing.stream.addTrack(event.track);
-                        return [...current];
+                    const existingIndex = current.findIndex((item) => item.userId === remoteUserId);
+                    if (existingIndex >= 0) {
+                        const existingStream = current[existingIndex].stream;
+                        if (!existingStream.getTracks().some((t) => t.id === event.track.id)) {
+                            existingStream.addTrack(event.track);
+                        }
+                        const updated = [...current];
+                        updated[existingIndex] = { userId: remoteUserId, stream: new MediaStream(existingStream.getTracks()) };
+                        return updated;
                     }
                     return [...current, { userId: remoteUserId, stream }];
                 });
             };
+
             pcRef.current = pc;
             sessionIdRef.current = data.sessionId;
             setCfSessionId(data.sessionId);
@@ -131,7 +140,9 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         await renegotiate(async () => {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-            const data = await cloudflare({ action: 'new-track', sessionId, trackId: trackName, sdp: pc.localDescription });
+            const transceivers = pc.getTransceivers();
+            const mid = transceivers[transceivers.length - 1]?.mid || undefined;
+            const data = await cloudflare({ action: 'new-track', sessionId, trackId: trackName, mid, sdp: pc.localDescription });
             if (data.sessionDescription) await pc.setRemoteDescription(data.sessionDescription);
         });
         publishedTracksRef.current.add(track.id);
@@ -147,24 +158,24 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         pulledTracksRef.current.add(`${remoteSessionId}:${trackName}`);
         try {
             await renegotiate(async () => {
-                pc.addTransceiver(trackName.startsWith(`${remoteUserId}-video-`) ? 'video' : 'audio', { direction: 'recvonly' });
+                const kind = trackName.includes('-video-') ? 'video' : 'audio';
+                pc.addTransceiver(kind, { direction: 'recvonly' });
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 const data = await cloudflare({ action: 'pull-tracks', sessionId, tracks: [{ location: 'remote', sessionId: remoteSessionId, trackName }], sdp: pc.localDescription });
+                
                 (data.tracks || []).forEach((track) => {
                     if (track.mid) trackToUserRef.current.set(track.mid, remoteUserId);
                     if (track.trackName) trackToUserRef.current.set(track.trackName, remoteUserId);
                 });
+
                 if (data.sessionDescription) {
                     await pc.setRemoteDescription(data.sessionDescription);
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    await cloudflare({ action: 'renegotiate', sessionId, sdp: answer });
                 }
             });
         } catch (error) {
             pulledTracksRef.current.delete(`${remoteSessionId}:${trackName}`);
-            console.error('Cloudflare remote track failed:', error);
+            console.error('Cloudflare remote track pull failed:', error);
         }
     }, [cloudflare, renegotiate]);
 
@@ -183,17 +194,49 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
     const applyPresence = useCallback((channel: ReturnType<typeof supabase.channel>) => {
         const state = channel.presenceState() as Record<string, PresencePayload[]>;
-        const online = new Map<string, PresencePayload>();
-        Object.entries(state).forEach(([key, values]) => { const value = values?.[values.length - 1]; if (value) online.set(value.user_id || key, value); });
-        setParticipants((current) => current.map((participant) => {
-            const presence = online.get(participant.userId);
-            if (!presence) return { ...participant, isOnline: false };
-            if (participant.userId !== userId && presence.cf_session_id) {
-                if (presence.audio_track_id) void pullRemoteTrack(presence.cf_session_id, presence.audio_track_id, participant.userId);
-                if (presence.video_track_id) void pullRemoteTrack(presence.cf_session_id, presence.video_track_id, participant.userId);
-            }
-            return { ...participant, fullName: presence.full_name || participant.fullName, isOnline: true, micEnabled: participant.userId === userId ? micEnabledRef.current : presence.mic_enabled, cameraEnabled: participant.userId === userId ? cameraEnabledRef.current : presence.camera_enabled, cfSessionId: presence.cf_session_id || undefined, audioTrackId: presence.audio_track_id || undefined, videoTrackId: presence.video_track_id || undefined };
-        }));
+        const onlineMap = new Map<string, PresencePayload>();
+        Object.entries(state).forEach(([key, values]) => { const value = values?.[values.length - 1]; if (value) onlineMap.set(value.user_id || key, value); });
+
+        setParticipants((current) => {
+            const updated = [...current];
+            const currentIds = new Set(current.map((p) => p.userId));
+
+            onlineMap.forEach((presence, presenceUserId) => {
+                if (!currentIds.has(presenceUserId)) {
+                    updated.push({
+                        userId: presenceUserId,
+                        fullName: presence.full_name || 'طالب مسار',
+                        micEnabled: presence.mic_enabled || false,
+                        cameraEnabled: presence.camera_enabled || false,
+                        isOnline: true,
+                        cfSessionId: presence.cf_session_id || undefined,
+                        audioTrackId: presence.audio_track_id || undefined,
+                        videoTrackId: presence.video_track_id || undefined,
+                    });
+                }
+            });
+
+            return updated.map((participant) => {
+                const presence = onlineMap.get(participant.userId);
+                if (!presence) return { ...participant, isOnline: false };
+
+                if (participant.userId !== userId && presence.cf_session_id) {
+                    if (presence.audio_track_id) void pullRemoteTrack(presence.cf_session_id, presence.audio_track_id, participant.userId);
+                    if (presence.video_track_id) void pullRemoteTrack(presence.cf_session_id, presence.video_track_id, participant.userId);
+                }
+
+                return {
+                    ...participant,
+                    fullName: presence.full_name || participant.fullName,
+                    isOnline: true,
+                    micEnabled: participant.userId === userId ? micEnabledRef.current : presence.mic_enabled,
+                    cameraEnabled: participant.userId === userId ? cameraEnabledRef.current : presence.camera_enabled,
+                    cfSessionId: presence.cf_session_id || undefined,
+                    audioTrackId: presence.audio_track_id || undefined,
+                    videoTrackId: presence.video_track_id || undefined,
+                };
+            });
+        });
     }, [pullRemoteTrack, userId]);
 
     const enableMedia = useCallback(async (kind: 'audio' | 'video') => {
@@ -307,7 +350,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         let active = true;
         const channel = supabase.channel(`cf-room:${roomId}`, { config: { presence: { key: userId } } });
         channelRef.current = channel;
-        channel.on('presence', { event: 'sync' }, () => { if (active) applyPresence(channel); }).on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, () => void loadParticipants()).subscribe(async (status) => { if (status === 'SUBSCRIBED') { await loadParticipants(); void initSession(); await trackPresence(); } });
+        channel.on('presence', { event: 'sync' }, () => { if (active) applyPresence(channel); }).on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, () => void loadParticipants()).subscribe(async (status) => { if (status === 'SUBSCRIBED') { await loadParticipants(); await initSession(); await trackPresence(); if (active && channelRef.current) applyPresence(channel); } });
         return () => { active = false; channelRef.current = null; void supabase.removeChannel(channel); void cleanup(); };
     }, [applyPresence, cleanup, initSession, loadParticipants, roomId, trackPresence, userId]);
 
@@ -315,3 +358,4 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
     return { participants, remoteStreams, localStream, micEnabled, cameraEnabled, mediaError, cfSessionId, toggleMic, toggleCamera, cleanup };
 }
+
