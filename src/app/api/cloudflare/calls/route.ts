@@ -55,9 +55,9 @@ export async function POST(request: Request) {
     }
 
     if (body.action === 'pull-tracks') {
-      if (!body.sdp || !body.tracks?.length) return jsonError('tracks and sdp are required.', 400);
+      if (!body.tracks?.length) return jsonError('tracks are required.', 400);
       return forward(`${sessionPath}/tracks/new`, 'POST', {
-        sessionDescription: body.sdp,
+        ...(body.sdp ? { sessionDescription: body.sdp } : {}),
         tracks: body.tracks,
       });
     }

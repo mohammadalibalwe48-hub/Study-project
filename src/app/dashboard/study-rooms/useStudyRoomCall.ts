@@ -61,6 +61,9 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const audioTrackIdRef = useRef<string | null>(null);
     const videoTrackIdRef = useRef<string | null>(null);
     const requestingMediaRef = useRef(new Set<'audio' | 'video'>());
+    const deliveredMidsRef = useRef(new Set<string>());
+    const pullAttemptsRef = useRef(new Map<string, number>());
+    const pullRemoteTracksRef = useRef<((remoteSessionId: string, remoteUserId: string, trackNames: string[]) => Promise<void>) | null>(null);
 
     const trackPresence = useCallback(async () => {
         const currentUserId = userIdRef.current;
@@ -93,16 +96,40 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         return next;
     }, []);
 
+    const waitForIceConnected = useCallback((pc: RTCPeerConnection) => new Promise<void>((resolve) => {
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') { resolve(); return; }
+        const timeout = window.setTimeout(() => { pc.removeEventListener('iceconnectionstatechange', handler); resolve(); }, 5000);
+        const handler = () => {
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                window.clearTimeout(timeout);
+                pc.removeEventListener('iceconnectionstatechange', handler);
+                resolve();
+            }
+        };
+        pc.addEventListener('iceconnectionstatechange', handler);
+    }), []);
+
+    const waitForTrackDelivery = useCallback((mid: string, timeoutMs: number) => new Promise<boolean>((resolve) => {
+        if (!mid) { resolve(true); return; }
+        if (deliveredMidsRef.current.has(mid)) { resolve(true); return; }
+        const start = Date.now();
+        const interval = window.setInterval(() => {
+            if (deliveredMidsRef.current.has(mid)) { window.clearInterval(interval); resolve(true); }
+            else if (Date.now() - start >= timeoutMs) { window.clearInterval(interval); resolve(false); }
+        }, 100);
+    }), []);
+
     const initSession = useCallback(async () => {
         try {
             const data = await cloudflare({ action: 'create-session' });
             if (!data.configured || !data.sessionId) throw new Error('Cloudflare Calls is not configured');
             if (!channelRef.current) return null;
-            const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }] });
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], bundlePolicy: 'max-bundle' });
             
             pc.ontrack = (event) => {
                 const stream = event.streams[0] || new MediaStream([event.track]);
                 const mid = event.transceiver?.mid || '';
+                if (mid) deliveredMidsRef.current.add(mid);
                 const remoteUserId = trackToUserRef.current.get(mid) || trackToUserRef.current.get(event.track.id) || event.track.id;
                 setRemoteStreams((current) => {
                     const existingIndex = current.findIndex((item) => item.userId === remoteUserId);
@@ -141,14 +168,13 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         if (!sessionId || !pc || publishedTracksRef.current.has(track.id)) return;
 
         const trackName = `${userIdRef.current}-${kind}-${crypto.randomUUID()}`;
-        const sender = pc.addTrack(track, localStreamRef.current || new MediaStream([track]));
+        const transceiver = pc.addTransceiver(track, { direction: 'sendonly', streams: [localStreamRef.current || new MediaStream([track])] });
         
         await renegotiate(async () => {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             
-            const transceiver = pc.getTransceivers().find((t) => t.sender === sender || t.sender?.track === track);
-            let mid = transceiver?.mid;
+            let mid = transceiver.mid;
             
             if (!mid && offer.sdp) {
                 const midMatches = Array.from(offer.sdp.matchAll(/a=mid:(\S+)/g));
@@ -162,32 +188,35 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             if (data.sessionDescription) await pc.setRemoteDescription(data.sessionDescription);
         });
 
+        await waitForIceConnected(pc);
+
         publishedTracksRef.current.add(track.id);
         if (kind === 'audio') audioTrackIdRef.current = trackName;
         else videoTrackIdRef.current = trackName;
         await trackPresence();
-    }, [cloudflare, initSession, renegotiate, trackPresence]);
+    }, [cloudflare, initSession, renegotiate, trackPresence, waitForIceConnected]);
 
-    const pullRemoteTrack = useCallback(async (remoteSessionId: string, trackName: string, remoteUserId: string) => {
+    const pullRemoteTracks = useCallback(async (remoteSessionId: string, remoteUserId: string, trackNames: string[]) => {
         let sessionId = sessionIdRef.current;
         let pc = pcRef.current;
         if (!sessionId || !pc) {
             sessionId = await initSession();
             pc = pcRef.current;
         }
-        if (!sessionId || !pc || !trackName || pulledTracksRef.current.has(`${remoteSessionId}:${trackName}`)) return;
-        pulledTracksRef.current.add(`${remoteSessionId}:${trackName}`);
+        if (!sessionId || !pc) return;
+
+        const names = trackNames.filter((name) => name && !pulledTracksRef.current.has(`${remoteSessionId}:${name}`));
+        if (!names.length) return;
+        names.forEach((name) => pulledTracksRef.current.add(`${remoteSessionId}:${name}`));
+
         try {
+            const midByTrack = new Map<string, string>();
             await renegotiate(async () => {
-                const kind = trackName.includes('-video-') ? 'video' : 'audio';
-                pc.addTransceiver(kind, { direction: 'recvonly' });
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                const data = await cloudflare({ action: 'pull-tracks', sessionId, tracks: [{ location: 'remote', sessionId: remoteSessionId, trackName }], sdp: pc.localDescription });
-                
+                const data = await cloudflare({ action: 'pull-tracks', sessionId, tracks: names.map((trackName) => ({ location: 'remote', sessionId: remoteSessionId, trackName })) });
                 (data.tracks || []).forEach((track) => {
                     if (track.mid) trackToUserRef.current.set(track.mid, remoteUserId);
                     if (track.trackName) trackToUserRef.current.set(track.trackName, remoteUserId);
+                    if (track.mid && track.trackName) midByTrack.set(track.trackName, track.mid);
                 });
 
                 if (data.sessionDescription) {
@@ -197,11 +226,31 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     await cloudflare({ action: 'renegotiate', sessionId, sdp: pc.localDescription });
                 }
             });
+
+            await Promise.all([...midByTrack.values()].map((mid) => waitForTrackDelivery(mid, 5000)));
+            await waitForIceConnected(pc);
+
+            const undelivered = names.filter((name) => {
+                const mid = midByTrack.get(name);
+                return mid ? !deliveredMidsRef.current.has(mid) : false;
+            });
+            undelivered.forEach((name) => pulledTracksRef.current.delete(`${remoteSessionId}:${name}`));
+            if (undelivered.length) {
+                const attempts = undelivered.map((name) => pullAttemptsRef.current.get(`${remoteSessionId}:${name}`) || 0);
+                if (Math.max(...attempts) < 2) {
+                    undelivered.forEach((name) => pullAttemptsRef.current.set(`${remoteSessionId}:${name}`, (pullAttemptsRef.current.get(`${remoteSessionId}:${name}`) || 0) + 1));
+                    window.setTimeout(() => { if (pcRef.current) void pullRemoteTracksRef.current?.(remoteSessionId, remoteUserId, undelivered); }, 500);
+                }
+            }
         } catch (error) {
-            pulledTracksRef.current.delete(`${remoteSessionId}:${trackName}`);
+            names.forEach((name) => pulledTracksRef.current.delete(`${remoteSessionId}:${name}`));
             console.error('Cloudflare remote track pull failed:', error);
         }
-    }, [cloudflare, initSession, renegotiate]);
+    }, [cloudflare, initSession, renegotiate, waitForIceConnected, waitForTrackDelivery]);
+
+    useEffect(() => {
+        pullRemoteTracksRef.current = pullRemoteTracks;
+    });
 
     const loadParticipants = useCallback(async () => {
         const currentUserId = userIdRef.current;
@@ -245,8 +294,8 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 if (!presence) return { ...participant, isOnline: false };
 
                 if (participant.userId !== userId && presence.cf_session_id) {
-                    if (presence.audio_track_id) void pullRemoteTrack(presence.cf_session_id, presence.audio_track_id, participant.userId);
-                    if (presence.video_track_id) void pullRemoteTrack(presence.cf_session_id, presence.video_track_id, participant.userId);
+                    const names = [presence.audio_track_id, presence.video_track_id].filter((name): name is string => !!name);
+                    if (names.length) void pullRemoteTracks(presence.cf_session_id, participant.userId, names);
                 }
 
                 return {
@@ -261,7 +310,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 };
             });
         });
-    }, [pullRemoteTrack, userId]);
+    }, [pullRemoteTracks, userId]);
 
     const enableMedia = useCallback(async (kind: 'audio' | 'video') => {
         if (requestingMediaRef.current.has(kind)) return;
@@ -313,12 +362,12 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 localVideoRef.current.srcObject = stream;
                 await localVideoRef.current.play().catch(() => undefined);
             }
-            await trackPresence();
 
             try {
                 await publishTrack(track, kind);
             } catch (error) {
                 console.error(`Cloudflare ${kind} publish failed:`, error);
+                void trackPresence();
                 setMediaError('تم تشغيل الجهاز محلياً، لكن تعذر بثه إلى بقية المشاركين. حاول مرة أخرى بعد لحظات.');
             }
         } catch (error) {
@@ -360,7 +409,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         localStreamRef.current?.getTracks().forEach((track) => track.stop()); localStreamRef.current = null; setLocalStream(null);
         if (localVideoRef.current) localVideoRef.current.srcObject = null;
         pcRef.current?.close(); pcRef.current = null; sessionIdRef.current = null; setCfSessionId(null);
-        publishedTracksRef.current.clear(); pulledTracksRef.current.clear(); trackToUserRef.current.clear(); requestingMediaRef.current.clear();
+        publishedTracksRef.current.clear(); pulledTracksRef.current.clear(); trackToUserRef.current.clear(); requestingMediaRef.current.clear(); deliveredMidsRef.current.clear(); pullAttemptsRef.current.clear();
         micEnabledRef.current = false; cameraEnabledRef.current = false; setRemoteStreams([]); setMicEnabled(false); setCameraEnabled(false);
     }, [localVideoRef]);
 
