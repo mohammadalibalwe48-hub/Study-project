@@ -132,28 +132,49 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     }, [cloudflare, trackPresence]);
 
     const publishTrack = useCallback(async (track: MediaStreamTrack, kind: 'audio' | 'video') => {
-        const sessionId = sessionIdRef.current;
-        const pc = pcRef.current;
+        let sessionId = sessionIdRef.current;
+        let pc = pcRef.current;
+        if (!sessionId || !pc) {
+            sessionId = await initSession();
+            pc = pcRef.current;
+        }
         if (!sessionId || !pc || publishedTracksRef.current.has(track.id)) return;
+
         const trackName = `${userIdRef.current}-${kind}-${crypto.randomUUID()}`;
-        pc.addTrack(track, localStreamRef.current || new MediaStream([track]));
+        const sender = pc.addTrack(track, localStreamRef.current || new MediaStream([track]));
+        
         await renegotiate(async () => {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-            const transceivers = pc.getTransceivers();
-            const mid = transceivers[transceivers.length - 1]?.mid || undefined;
+            
+            const transceiver = pc.getTransceivers().find((t) => t.sender === sender || t.sender?.track === track);
+            let mid = transceiver?.mid;
+            
+            if (!mid && offer.sdp) {
+                const midMatches = Array.from(offer.sdp.matchAll(/a=mid:(\S+)/g));
+                if (midMatches.length > 0) {
+                    mid = midMatches[midMatches.length - 1][1];
+                }
+            }
+            if (!mid) mid = '0';
+
             const data = await cloudflare({ action: 'new-track', sessionId, trackId: trackName, mid, sdp: pc.localDescription });
             if (data.sessionDescription) await pc.setRemoteDescription(data.sessionDescription);
         });
+
         publishedTracksRef.current.add(track.id);
         if (kind === 'audio') audioTrackIdRef.current = trackName;
         else videoTrackIdRef.current = trackName;
         await trackPresence();
-    }, [cloudflare, renegotiate, trackPresence]);
+    }, [cloudflare, initSession, renegotiate, trackPresence]);
 
     const pullRemoteTrack = useCallback(async (remoteSessionId: string, trackName: string, remoteUserId: string) => {
-        const sessionId = sessionIdRef.current;
-        const pc = pcRef.current;
+        let sessionId = sessionIdRef.current;
+        let pc = pcRef.current;
+        if (!sessionId || !pc) {
+            sessionId = await initSession();
+            pc = pcRef.current;
+        }
         if (!sessionId || !pc || !trackName || pulledTracksRef.current.has(`${remoteSessionId}:${trackName}`)) return;
         pulledTracksRef.current.add(`${remoteSessionId}:${trackName}`);
         try {
@@ -177,7 +198,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             pulledTracksRef.current.delete(`${remoteSessionId}:${trackName}`);
             console.error('Cloudflare remote track pull failed:', error);
         }
-    }, [cloudflare, renegotiate]);
+    }, [cloudflare, initSession, renegotiate]);
 
     const loadParticipants = useCallback(async () => {
         const currentUserId = userIdRef.current;
