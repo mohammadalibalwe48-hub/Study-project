@@ -192,6 +192,9 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
                 if (data.sessionDescription) {
                     await pc.setRemoteDescription(data.sessionDescription);
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    await cloudflare({ action: 'renegotiate', sessionId, sdp: pc.localDescription });
                 }
             });
         } catch (error) {
