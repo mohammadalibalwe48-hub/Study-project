@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       try { data = text ? JSON.parse(text) as Record<string, unknown> : {}; } catch { data = { details: text }; }
       if (!response.ok) {
         console.error('Cloudflare Calls API rejected request:', response.status, data);
-        return NextResponse.json({ error: 'Cloudflare Calls rejected the request.', details: data }, { status: response.status });
+        return NextResponse.json({ error: 'Cloudflare Calls rejected the request.', errorCode: data.errorCode, details: data }, { status: response.status });
       }
       return NextResponse.json({ configured: true, ...data });
     };
