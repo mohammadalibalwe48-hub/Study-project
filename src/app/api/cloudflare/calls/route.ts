@@ -53,8 +53,11 @@ async function getIceServers(): Promise<RTCIceServer[]> {
     if (!result.response.ok) throw new Error('TURN credential generation failed.');
     const generated = (result.data as { iceServers?: RTCIceServer[] }).iceServers || fallbackIceServers;
     const servers: RTCIceServer[] = generated
-      .map((server) => ({ ...server, urls: server.urls.filter((url) => !/:53([?/]|$)/.test(url)) }))
-      .filter((server) => server.urls.length > 0);
+      .map((server) => {
+        const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+        return { ...server, urls: urls.filter((url) => !/:53([?/]|$)/.test(url)) };
+      })
+      .filter((server) => Array.isArray(server.urls) ? server.urls.length > 0 : server.urls.length > 0);
     iceServersCache = { iceServers: servers, expiresAt: Date.now() + 12 * 60 * 60 * 1000 };
     return servers;
   } catch (error) {
