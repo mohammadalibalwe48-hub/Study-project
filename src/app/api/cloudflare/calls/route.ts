@@ -54,10 +54,10 @@ async function getIceServers(): Promise<RTCIceServer[]> {
     const generated = (result.data as { iceServers?: RTCIceServer[] }).iceServers || fallbackIceServers;
     const servers: RTCIceServer[] = generated
       .map((server) => {
-        const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-        return { ...server, urls: urls.filter((url) => !/:53([?/]|$)/.test(url)) };
+        const urls: string[] = Array.isArray(server.urls) ? server.urls : [server.urls];
+        return { urls: urls.filter((url) => !/:53([?/]|$)/.test(url)) };
       })
-      .filter((server) => Array.isArray(server.urls) ? server.urls.length > 0 : server.urls.length > 0);
+      .filter((server) => server.urls.length > 0);
     iceServersCache = { iceServers: servers, expiresAt: Date.now() + 12 * 60 * 60 * 1000 };
     return servers;
   } catch (error) {
