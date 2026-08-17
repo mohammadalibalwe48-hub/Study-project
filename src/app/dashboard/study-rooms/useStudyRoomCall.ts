@@ -79,6 +79,7 @@ const TRACK_DELIVERY_TIMEOUT_MS = 7_000;
 const PULL_MAX_ATTEMPTS = 6;
 const PULL_RETRY_DELAY_MS = 900;
 const PULL_RECONCILE_INTERVAL_MS = 5_000;
+const PARTICIPANT_RECONCILE_INTERVAL_MS = 5_000;
 const PRESENCE_HEARTBEAT_MS = 10_000;
 const STATS_INTERVAL_MS = 5_000;
 
@@ -795,20 +796,32 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     useEffect(() => {
         if (!roomId || !userId) return;
         let active = true;
+        let initialized = false;
         cleanedRef.current = false;
         const channel = supabase.channel(`cf-room:${roomId}`, { config: { presence: { key: `${userId}:${clientInstanceIdRef.current}` } } });
         channelRef.current = channel;
-        channel.on('presence', { event: 'sync' }, () => { if (active) applyPresenceRef.current?.(channel); })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, () => void loadParticipantsRef.current?.())
+        const refreshParticipants = () => {
+            if (active) void loadParticipantsRef.current?.();
+        };
+        channel.on('presence', { event: 'sync' }, () => {
+            if (!active) return;
+            applyPresenceRef.current?.(channel);
+            refreshParticipants();
+        })
+            .on('presence', { event: 'join' }, refreshParticipants)
+            .on('presence', { event: 'leave' }, refreshParticipants)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, refreshParticipants)
             .subscribe(async (status) => {
-                if (status === 'SUBSCRIBED' && active) {
-                    setDebugInfo((current) => ({ ...current, status: 'connecting' }));
-                    await loadParticipantsRef.current?.();
+                if (status !== 'SUBSCRIBED' || !active) return;
+                setDebugInfo((current) => ({ ...current, status: initialized ? current.status : 'connecting' }));
+                await loadParticipantsRef.current?.();
+                if (!initialized) {
                     await initSession();
-                    presenceReadyRef.current = true;
-                    await trackPresence();
-                    if (active && channelRef.current) applyPresenceRef.current?.(channel);
+                    initialized = true;
                 }
+                presenceReadyRef.current = Boolean(sessionIdRef.current);
+                await trackPresence();
+                if (active && channelRef.current) applyPresenceRef.current?.(channel);
             });
 
         const heartbeat = window.setInterval(() => {
@@ -817,12 +830,14 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         const reconciliation = window.setInterval(() => {
             if (active) reconcileRemoteTracksRef.current?.();
         }, PULL_RECONCILE_INTERVAL_MS);
-        timersRef.current.push(heartbeat, reconciliation);
+        const participantReconciliation = window.setInterval(refreshParticipants, PARTICIPANT_RECONCILE_INTERVAL_MS);
+        timersRef.current.push(heartbeat, reconciliation, participantReconciliation);
 
         return () => {
             active = false;
             window.clearInterval(heartbeat);
             window.clearInterval(reconciliation);
+            window.clearInterval(participantReconciliation);
             channelRef.current = null;
             void supabase.removeChannel(channel);
             cleanup();
@@ -833,7 +848,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         if (!roomId || !userId) return;
         const recover = () => {
             if (document.visibilityState === 'visible' && navigator.onLine) {
-                applyPresenceRef.current?.(channelRef.current!);
+                const channel = channelRef.current;
+                if (channel) applyPresenceRef.current?.(channel);
+                void loadParticipantsRef.current?.();
+                void trackPresence();
                 reconcileRemoteTracksRef.current?.();
             }
         };
@@ -846,7 +864,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             window.removeEventListener('offline', handleOffline);
             document.removeEventListener('visibilitychange', recover);
         };
-    }, [pushLog, roomId, userId]);
+    }, [pushLog, roomId, trackPresence, userId]);
 
     useEffect(() => {
         if (!roomId || !userId) return;

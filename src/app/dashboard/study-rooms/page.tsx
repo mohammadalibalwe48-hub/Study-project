@@ -241,11 +241,30 @@ export default function StudyRoomsPage() {
 
   const leaveRoom = async () => {
     if (!user || !selectedRoom) return;
+    const roomId = selectedRoom.id;
+    const { error: leaveError } = await supabase.rpc('leave_study_room', { p_room_id: roomId });
+    if (leaveError) {
+      console.error('Study room leave failed:', leaveError);
+      setError(getDatabaseError(leaveError, 'تعذر مغادرة الغرفة. حاول مرة أخرى.'));
+      return;
+    }
     await cleanupCall();
-    await supabase.from('study_room_members').delete().eq('room_id', selectedRoom.id).eq('user_id', user.id);
     setSelectedRoom(null); setChatMessages([]); setTimerActive(false);
     await refreshRooms();
   };
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const refreshDirectory = () => {
+      if (active) void refreshRooms().catch((refreshError) => console.error('Study-room directory refresh failed:', refreshError));
+    };
+    const channel = supabase.channel('study-room-directory')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_rooms' }, refreshDirectory)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members' }, refreshDirectory)
+      .subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [refreshRooms, user]);
 
   useEffect(() => {
     if (!selectedRoom || !user) return;
@@ -266,7 +285,7 @@ export default function StudyRoomsPage() {
       })
       .subscribe();
     roomChannelRef.current = channel;
-    return () => { cancelled = true; roomChannelRef.current = null; supabase.removeChannel(channel); };
+    return () => { cancelled = true; roomChannelRef.current = null; void supabase.removeChannel(channel); };
   }, [refreshRooms, selectedRoom, user]);
 
   useEffect(() => {
