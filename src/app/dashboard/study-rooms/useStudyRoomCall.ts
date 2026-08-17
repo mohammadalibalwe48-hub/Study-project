@@ -37,6 +37,14 @@ interface UseStudyRoomCallOptions {
 }
 
 type CloudflareTrack = { mid?: string; trackName?: string; errorCode?: string; errorDescription?: string };
+type CloudflareResponse = {
+    sessionId?: string;
+    sessionDescription?: RTCSessionDescriptionInit;
+    tracks?: CloudflareTrack[];
+    configured?: boolean;
+    iceServers?: RTCIceServer[];
+};
+type CloudflareRequestError = Error & { code?: string; status?: number };
 type TrackKind = 'audio' | 'video';
 type PresencePayload = {
     user_id: string;
@@ -138,19 +146,33 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         }
     }, []);
 
-    const cloudflare = useCallback(async (body: Record<string, unknown>) => {
-        const response = await fetch('/api/cloudflare/calls', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || data.error) {
-            const error = new Error(data.error || 'Cloudflare Calls request failed') as Error & { code?: string };
-            if (data.errorCode) error.code = data.errorCode;
+    const cloudflare = useCallback(async (body: Record<string, unknown>): Promise<CloudflareResponse> => {
+        let response: Response;
+        try {
+            response = await fetch('/api/cloudflare/calls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                cache: 'no-store',
+            });
+        } catch (cause) {
+            const error = new Error('تعذر الوصول إلى خادم الاتصال. تحقق من الشبكة ثم حاول مجدداً.', { cause }) as CloudflareRequestError;
+            error.code = 'cloudflare_network_error';
             throw error;
         }
-        return data as { sessionId?: string; sessionDescription?: RTCSessionDescriptionInit; tracks?: CloudflareTrack[]; configured?: boolean; iceServers?: RTCIceServer[] };
+
+        const contentType = response.headers.get('content-type') || '';
+        const data = contentType.includes('application/json')
+            ? await response.json().catch(() => ({})) as Record<string, unknown>
+            : {};
+        if (!response.ok || typeof data.error === 'string') {
+            const serverMessage = typeof data.error === 'string' ? data.error : '';
+            const error = new Error(serverMessage || `Cloudflare Calls request failed (${response.status})`) as CloudflareRequestError;
+            if (typeof data.errorCode === 'string') error.code = data.errorCode;
+            error.status = response.status;
+            throw error;
+        }
+        return data as CloudflareResponse;
     }, []);
 
     const renegotiate = useCallback((operation: () => Promise<void>) => {
@@ -264,9 +286,18 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 await trackPresence();
                 return data.sessionId;
             } catch (error) {
-                console.error('[calls] session init failed:', error);
-                pushLog('تعذر إنشاء الجلسة');
-                setMediaError('تعذر تشغيل خدمة الاتصال. تأكد من إعداد Cloudflare Calls ثم أعد المحاولة.');
+                const failure = error as CloudflareRequestError;
+                console.error('[calls] session init failed:', failure.code || failure.message);
+                pushLog(`تعذر إنشاء الجلسة${failure.code ? ` (${failure.code})` : ''}`);
+                if (failure.code === 'cloudflare_not_configured') {
+                    setMediaError('خدمة الاتصال غير مهيأة على الخادم. يجب إضافة بيانات Cloudflare Calls إلى بيئة النشر ثم إعادة تشغيل الخادم.');
+                } else if (failure.code === 'cloudflare_timeout' || failure.code === 'cloudflare_network_error') {
+                    setMediaError('تعذر الوصول إلى خدمة الاتصال الآن. تحقق من الشبكة ثم حاول مجدداً.');
+                } else if (failure.status === 401 || failure.status === 403) {
+                    setMediaError('رفضت Cloudflare بيانات الاتصال. تحقق من App ID وApp Token في إعدادات الخادم.');
+                } else {
+                    setMediaError(`تعذر تشغيل خدمة الاتصال${failure.code ? ` (${failure.code})` : ''}. أعد المحاولة بعد لحظات.`);
+                }
                 return null;
             } finally {
                 sessionPromiseRef.current = null;

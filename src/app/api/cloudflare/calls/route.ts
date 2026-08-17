@@ -11,7 +11,15 @@ type CallsBody = {
   sdp?: RTCSessionDescriptionInit;
 };
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 12_000;
+const ALLOWED_ACTIONS = new Set<NonNullable<CallsBody['action']>>([
+  'create-session',
+  'new-track',
+  'pull-tracks',
+  'renegotiate',
+  'close-tracks',
+  'get-ice-servers',
+]);
 
 let iceServersCache: { iceServers: RTCIceServer[]; expiresAt: number } | null = null;
 
@@ -19,8 +27,30 @@ const fallbackIceServers: RTCIceServer[] = [
   { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
 ];
 
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status });
+function jsonError(message: string, status: number, errorCode?: string) {
+  return NextResponse.json(
+    { error: message, ...(errorCode ? { errorCode } : {}) },
+    { status, headers: { 'Cache-Control': 'no-store' } },
+  );
+}
+
+function getEnvironmentValue(name: string) {
+  const value = process.env[name]?.trim();
+  return value || null;
+}
+
+function getCloudflareError(data: Record<string, unknown>, status: number) {
+  const nestedError = data.error && typeof data.error === 'object'
+    ? data.error as Record<string, unknown>
+    : null;
+  const code = String(data.errorCode || nestedError?.errorCode || nestedError?.code || `cloudflare_${status}`);
+  const description = data.errorDescription || nestedError?.errorDescription || nestedError?.message;
+  return {
+    code,
+    message: typeof description === 'string'
+      ? `Cloudflare Calls rejected the request: ${description}`
+      : `Cloudflare Calls rejected the request (${status}).`,
+  };
 }
 
 async function fetchJson(url: string, init: RequestInit) {
@@ -40,52 +70,67 @@ async function fetchJson(url: string, init: RequestInit) {
 async function getIceServers(): Promise<RTCIceServer[]> {
   if (iceServersCache && iceServersCache.expiresAt > Date.now()) return iceServersCache.iceServers;
 
-  const keyId = process.env.CLOUDFLARE_TURN_KEY_ID;
-  const keySecret = process.env.CLOUDFLARE_TURN_KEY_SECRET;
+  const keyId = getEnvironmentValue('CLOUDFLARE_TURN_KEY_ID');
+  const keySecret = getEnvironmentValue('CLOUDFLARE_TURN_KEY_SECRET');
 
   try {
     if (!keyId || !keySecret) throw new Error('TURN key is not configured.');
     const result = await fetchJson(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${keySecret}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ttl: 86400 }),
+      body: JSON.stringify({ ttl: 86_400 }),
     });
-    if (!result.response.ok) throw new Error('TURN credential generation failed.');
-    const generated = (result.data as { iceServers?: RTCIceServer[] }).iceServers || fallbackIceServers;
-    const servers: RTCIceServer[] = generated
-      .map((server) => {
-        const urls: string[] = Array.isArray(server.urls) ? server.urls : [server.urls];
-        return { urls: urls.filter((url) => !/:53([?/]|$)/.test(url)) };
-      })
-      .filter((server) => server.urls.length > 0);
+    if (!result.response.ok) {
+      const failure = getCloudflareError(result.data, result.response.status);
+      throw new Error(failure.message);
+    }
+
+    const generated = (result.data as { iceServers?: RTCIceServer[] }).iceServers;
+    if (!Array.isArray(generated) || generated.length === 0) {
+      throw new Error('Cloudflare TURN returned no ICE servers.');
+    }
+
+    // Keep username and credential: removing them turns every TURN URL into an unusable server.
+    const servers = generated.filter((server) => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      return urls.some((url) => typeof url === 'string' && url.length > 0);
+    });
+    if (servers.length === 0) throw new Error('Cloudflare TURN returned invalid ICE servers.');
+
     iceServersCache = { iceServers: servers, expiresAt: Date.now() + 12 * 60 * 60 * 1000 };
     return servers;
   } catch (error) {
-    console.error('TURN credentials failed, falling back to STUN:', error);
+    console.warn('TURN credentials failed; using STUN-only fallback:', error);
     return fallbackIceServers;
   }
 }
 
 export async function POST(request: Request) {
-  const appId = process.env.CLOUDFLARE_CALLS_APP_ID;
-  const appToken = process.env.CLOUDFLARE_CALLS_APP_TOKEN;
-  if (!appId || !appToken) return jsonError('Cloudflare Calls is not configured on the server.', 503);
+  const appId = getEnvironmentValue('CLOUDFLARE_CALLS_APP_ID');
+  const appToken = getEnvironmentValue('CLOUDFLARE_CALLS_APP_TOKEN');
+  if (!appId || !appToken) {
+    return jsonError('Cloudflare Calls credentials are missing on the server.', 503, 'cloudflare_not_configured');
+  }
 
   try {
-    if (request.method !== 'POST') return jsonError('Method not allowed.', 405);
-
-    if (request.headers.get('content-type')?.includes('application/json')) {
-      const body = await request.json() as CallsBody;
-
-      if (body.action === 'get-ice-servers') {
-        const iceServers = await getIceServers();
-        return NextResponse.json({ configured: true, iceServers });
-      }
-    } else {
-      return jsonError('Content-Type must be application/json.', 415);
+    if (!request.headers.get('content-type')?.toLowerCase().includes('application/json')) {
+      return jsonError('Content-Type must be application/json.', 415, 'invalid_content_type');
     }
 
+    // A Request body is a one-use stream. Parse it exactly once and reuse the result.
     const body = await request.json() as CallsBody;
+    if (!body || typeof body !== 'object' || !body.action || !ALLOWED_ACTIONS.has(body.action)) {
+      return jsonError('A valid action is required.', 400, 'invalid_action');
+    }
+
+    if (body.action === 'get-ice-servers') {
+      const iceServers = await getIceServers();
+      return NextResponse.json(
+        { configured: true, iceServers },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+
     const baseUrl = `https://rtc.live.cloudflare.com/v1/apps/${encodeURIComponent(appId)}`;
     const headers = { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' };
 
@@ -96,10 +141,17 @@ export async function POST(request: Request) {
         body: payload ? JSON.stringify(payload) : undefined,
       });
       if (!response.ok) {
-        console.error('Cloudflare Calls API rejected request:', response.status, data);
-        return NextResponse.json({ error: 'Cloudflare Calls rejected the request.', errorCode: data.errorCode, details: data }, { status: response.status });
+        const failure = getCloudflareError(data, response.status);
+        console.error('Cloudflare Calls API rejected request:', response.status, failure.code, data);
+        return NextResponse.json(
+          { error: failure.message, errorCode: failure.code },
+          { status: response.status, headers: { 'Cache-Control': 'no-store' } },
+        );
       }
-      return NextResponse.json({ configured: true, ...data });
+      return NextResponse.json(
+        { configured: true, ...data },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
     };
 
     if (body.action === 'create-session') return forward('/sessions/new', 'POST');
@@ -132,9 +184,13 @@ export async function POST(request: Request) {
       return forward(`${sessionPath}/tracks/close`, 'PUT', { tracks: body.tracks });
     }
 
-    return jsonError('Invalid action.', 400);
+    return jsonError('Invalid action.', 400, 'invalid_action');
   } catch (error) {
+    if (error instanceof SyntaxError) return jsonError('The request body is not valid JSON.', 400, 'invalid_json');
+    if (error instanceof Error && error.name === 'AbortError') {
+      return jsonError('Cloudflare Calls did not respond in time.', 504, 'cloudflare_timeout');
+    }
     console.error('Cloudflare Calls route failed:', error);
-    return jsonError(error instanceof Error ? error.message : 'Unexpected server error.', 500);
+    return jsonError('The Cloudflare Calls request failed unexpectedly.', 502, 'cloudflare_proxy_error');
   }
 }
