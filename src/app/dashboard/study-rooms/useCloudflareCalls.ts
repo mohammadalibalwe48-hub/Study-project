@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * @deprecated This experimental hook is intentionally retained only for reference.
+ * Study rooms use `useStudyRoomCall`, which owns the generation-aware Cloudflare
+ * publication/subscription lifecycle. Do not import this hook into new UI code.
+ */
 import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabase/client';
 
@@ -23,6 +28,7 @@ interface UseCloudflareCallsOptions {
   localVideoRef: RefObject<HTMLVideoElement | null>;
 }
 
+/** @deprecated Use `useStudyRoomCall` from `./useStudyRoomCall`. */
 export function useCloudflareCalls({ roomId, userId, localVideoRef }: UseCloudflareCallsOptions) {
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [remoteStreams, setRemoteStreams] = useState<RemoteRoomStream[]>([]);

@@ -12,6 +12,7 @@ export interface RoomParticipant {
     cfSessionId?: string;
     audioTrackId?: string;
     videoTrackId?: string;
+    sessionGeneration?: number;
 }
 
 export interface RemoteRoomStream {
@@ -26,6 +27,10 @@ export interface CallDebugInfo {
     iceConnectionState: string;
     published: { audio: boolean; video: boolean };
     pulledTracks: number;
+    sessionGeneration: number;
+    inboundBytes: number;
+    outboundBytes: number;
+    candidateType: string;
     logs: string[];
 }
 
@@ -49,6 +54,10 @@ type TrackKind = 'audio' | 'video';
 type PresencePayload = {
     user_id: string;
     full_name: string;
+    client_instance_id: string;
+    session_generation: number;
+    session_ready: boolean;
+    updated_at: number;
     cf_session_id?: string | null;
     audio_track_id?: string | null;
     video_track_id?: string | null;
@@ -56,11 +65,22 @@ type PresencePayload = {
     camera_enabled: boolean;
 };
 
-const ICE_CONNECT_TIMEOUT_MS = 2500;
-const TRACK_DELIVERY_TIMEOUT_MS = 4000;
-const PULL_MAX_ATTEMPTS = 5;
-const PULL_RETRY_DELAY_MS = 1200;
+type DesiredRemoteTrack = {
+    key: string;
+    userId: string;
+    sessionId: string;
+    generation: number;
+    trackName: string;
+};
+
+const ICE_CONNECT_TIMEOUT_MS = 10_000;
+const ICE_DISCONNECTED_GRACE_MS = 8_000;
+const TRACK_DELIVERY_TIMEOUT_MS = 7_000;
+const PULL_MAX_ATTEMPTS = 6;
+const PULL_RETRY_DELAY_MS = 900;
+const PULL_RECONCILE_INTERVAL_MS = 5_000;
 const PRESENCE_HEARTBEAT_MS = 10_000;
+const STATS_INTERVAL_MS = 5_000;
 
 export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مسار', localVideoRef }: UseStudyRoomCallOptions) {
     const [participants, setParticipants] = useState<RoomParticipant[]>([]);
@@ -77,6 +97,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         iceConnectionState: 'new',
         published: { audio: false, video: false },
         pulledTracks: 0,
+        sessionGeneration: 0,
+        inboundBytes: 0,
+        outboundBytes: 0,
+        candidateType: 'unknown',
         logs: [],
     });
 
@@ -91,6 +115,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const publishedTracksRef = useRef(new Map<TrackKind, MediaStreamTrack>());
     const publishInFlightRef = useRef(new Map<TrackKind, Promise<void>>());
     const pulledTracksRef = useRef(new Set<string>());
+    const desiredRemoteTracksRef = useRef(new Map<string, DesiredRemoteTrack>());
     const pullAttemptsRef = useRef(new Map<string, number>());
     const deliveredMidsRef = useRef(new Set<string>());
     const trackToUserRef = useRef(new Map<string, string>());
@@ -102,8 +127,14 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const requestingMediaRef = useRef(new Set<TrackKind>());
     const refreshingRef = useRef(false);
     const cleanedRef = useRef(false);
+    const sessionGenerationRef = useRef(0);
+    const presenceReadyRef = useRef(false);
+    const clientInstanceIdRef = useRef(crypto.randomUUID());
+    const iceDisconnectedTimerRef = useRef<number | null>(null);
+    const lastStatsRef = useRef({ inbound: 0, outbound: 0, stagnantChecks: 0 });
     const timersRef = useRef<number[]>([]);
-    const pullRemoteTracksRef = useRef<((remoteSessionId: string, remoteUserId: string, trackNames: string[]) => Promise<void>) | null>(null);
+    const pullRemoteTracksRef = useRef<((remoteSessionId: string, remoteUserId: string, trackNames: string[], remoteGeneration?: number) => Promise<void>) | null>(null);
+    const reconcileRemoteTracksRef = useRef<(() => void) | null>(null);
     const refreshSessionRef = useRef<((reason?: string) => Promise<string | null>) | null>(null);
     const publishTrackRef = useRef<(track: MediaStreamTrack, kind: TrackKind) => Promise<void>>(null);
     const applyPresenceRef = useRef<((channel: ReturnType<typeof supabase.channel>) => void) | null>(null);
@@ -135,6 +166,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             await channelRef.current.track({
                 user_id: currentUserId,
                 full_name: profileNameRef.current,
+                client_instance_id: clientInstanceIdRef.current,
+                session_generation: sessionGenerationRef.current,
+                session_ready: presenceReadyRef.current,
+                updated_at: Date.now(),
                 cf_session_id: sessionIdRef.current,
                 audio_track_id: audioTrackIdRef.current,
                 video_track_id: videoTrackIdRef.current,
@@ -175,8 +210,12 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         return data as CloudflareResponse;
     }, []);
 
-    const renegotiate = useCallback((operation: () => Promise<void>) => {
-        const next = negotiationRef.current.then(operation, operation);
+    const renegotiate = useCallback((operation: () => Promise<void>, generation = sessionGenerationRef.current) => {
+        const guardedOperation = async () => {
+            if (generation !== sessionGenerationRef.current || cleanedRef.current) return;
+            await operation();
+        };
+        const next = negotiationRef.current.then(guardedOperation, guardedOperation);
         negotiationRef.current = next.catch(() => undefined);
         return next;
     }, []);
@@ -262,7 +301,25 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             }
         };
 
-        pc.oniceconnectionstatechange = updateConnectionDebug;
+        pc.oniceconnectionstatechange = () => {
+            updateConnectionDebug();
+            if (cleanedRef.current || pc !== pcRef.current) return;
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                if (iceDisconnectedTimerRef.current !== null) window.clearTimeout(iceDisconnectedTimerRef.current);
+                iceDisconnectedTimerRef.current = null;
+                reconcileRemoteTracksRef.current?.();
+            } else if (pc.iceConnectionState === 'disconnected' && iceDisconnectedTimerRef.current === null) {
+                iceDisconnectedTimerRef.current = window.setTimeout(() => {
+                    iceDisconnectedTimerRef.current = null;
+                    if (pc === pcRef.current && pc.iceConnectionState === 'disconnected') {
+                        pushLog('الاتصال متوقف — محاولة استعادة الجلسة');
+                        void refreshSessionRef.current?.('ice-disconnected');
+                    }
+                }, ICE_DISCONNECTED_GRACE_MS);
+            } else if (pc.iceConnectionState === 'failed') {
+                void refreshSessionRef.current?.('ice-failed');
+            }
+        };
 
         return pc;
     }, [pushLog, updateConnectionDebug]);
@@ -273,17 +330,22 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         sessionPromiseRef.current = (async () => {
             try {
                 await ensureIceServers();
+                const generation = sessionGenerationRef.current + 1;
+                sessionGenerationRef.current = generation;
+                presenceReadyRef.current = false;
+                audioTrackIdRef.current = null;
+                videoTrackIdRef.current = null;
+                await trackPresence();
                 const data = await cloudflare({ action: 'create-session' });
                 if (!data.configured || !data.sessionId) throw new Error('Cloudflare Calls is not configured');
-                if (cleanedRef.current || !channelRef.current) return null;
+                if (cleanedRef.current || !channelRef.current || generation !== sessionGenerationRef.current) return null;
                 const pc = createPeerConnection();
                 pcRef.current = pc;
                 sessionIdRef.current = data.sessionId;
                 setCfSessionId(data.sessionId);
-                setDebugInfo((current) => ({ ...current, status: 'ready', sessionId: data.sessionId || null }));
-                log('session created', data.sessionId);
-                pushLog('الجلسة جاهزة');
-                await trackPresence();
+                setDebugInfo((current) => ({ ...current, status: 'ready', sessionId: data.sessionId || null, sessionGeneration: generation }));
+                log('session created', data.sessionId, 'generation', generation);
+                pushLog(`الجلسة جاهزة (${generation})`);
                 return data.sessionId;
             } catch (error) {
                 const failure = error as CloudflareRequestError;
@@ -326,8 +388,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         if (publishInFlightRef.current.has(kind)) await publishInFlightRef.current.get(kind);
         const sessionId = (sessionIdRef.current || await initSession());
         const pc = pcRef.current;
+        const generation = sessionGenerationRef.current;
         const previous = publishedTracksRef.current.get(kind);
-        if (previous === track && audioTrackIdRef.current && kind === 'audio') return;
+        const existingTrackId = kind === 'audio' ? audioTrackIdRef.current : videoTrackIdRef.current;
+        if (previous === track && existingTrackId) return;
         if (!sessionId || !pc || cleanedRef.current) return;
 
         const publishPromise = (async () => {
@@ -342,6 +406,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             const transceiver = pc.addTransceiver(track, { direction: 'sendonly', streams: [localStreamRef.current || new MediaStream([track])] });
 
             await renegotiate(async () => {
+                if (pc.signalingState !== 'stable') throw new Error(`Cannot publish while signaling state is ${pc.signalingState}`);
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
@@ -352,9 +417,11 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 }
 
                 const data = await cloudflare({ action: 'new-track', sessionId, trackId: trackName, mid: mid || '0', sdp: pc.localDescription });
+                if (generation !== sessionGenerationRef.current || pc !== pcRef.current) return;
                 if (data.sessionDescription) await pc.setRemoteDescription(data.sessionDescription);
-            });
+            }, generation);
 
+            if (generation !== sessionGenerationRef.current || pc !== pcRef.current) return;
             if (kind === 'audio') audioTrackIdRef.current = trackName;
             else videoTrackIdRef.current = trackName;
             log('published', kind, trackName);
@@ -364,9 +431,8 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             setDebugInfo((current) => ({ ...current, published: { ...current.published, [kind]: true } }));
             await trackPresence();
             if (!connected) {
-                console.warn('[calls] ICE did not connect after publish, refreshing session', kind);
-                pushLog('لا يوجد اتصال ICE — إعادة المحاولة');
-                void refreshSessionRef.current?.('publish-ice-timeout');
+                console.warn('[calls] ICE is still connecting after publish', kind);
+                pushLog('اتصال ICE بطيء — تستمر محاولة الاتصال');
             }
         })();
 
@@ -378,12 +444,17 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         }
     }, [cloudflare, initSession, log, pushLog, renegotiate, trackPresence, waitForIceConnected]);
 
-    const pullRemoteTracks = useCallback(async (remoteSessionId: string, remoteUserId: string, trackNames: string[]) => {
+    const pullRemoteTracks = useCallback(async (remoteSessionId: string, remoteUserId: string, trackNames: string[], remoteGeneration = 0) => {
         const sessionId = (sessionIdRef.current || await initSession());
         const pc = pcRef.current;
+        const localGeneration = sessionGenerationRef.current;
         if (!sessionId || !pc || cleanedRef.current) return;
 
-        const names = trackNames.filter((name) => name && !pulledTracksRef.current.has(`${remoteSessionId}:${name}`));
+        const names = trackNames.filter((name) => {
+            const key = `${remoteSessionId}:${name}`;
+            const desired = desiredRemoteTracksRef.current.get(key);
+            return name && !pulledTracksRef.current.has(key) && (!desired || desired.generation === remoteGeneration);
+        });
         if (!names.length) return;
         names.forEach((name) => pulledTracksRef.current.add(`${remoteSessionId}:${name}`));
         setDebugInfo((current) => ({ ...current, pulledTracks: current.pulledTracks + names.length }));
@@ -391,9 +462,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         try {
             const midByTrack = new Map<string, string>();
             const failedNames: string[] = [];
-
             await renegotiate(async () => {
+                if (pc.signalingState !== 'stable') throw new Error(`Cannot pull while signaling state is ${pc.signalingState}`);
                 const data = await cloudflare({ action: 'pull-tracks', sessionId, tracks: names.map((trackName) => ({ location: 'remote', sessionId: remoteSessionId, trackName })) });
+                if (localGeneration !== sessionGenerationRef.current || pc !== pcRef.current) return;
                 (data.tracks || []).forEach((trackResponse) => {
                     if (trackResponse.errorCode || !trackResponse.mid) {
                         if (trackResponse.trackName) failedNames.push(trackResponse.trackName);
@@ -403,103 +475,108 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     if (trackResponse.trackName) trackToUserRef.current.set(trackResponse.trackName, remoteUserId);
                     if (trackResponse.mid && trackResponse.trackName) midByTrack.set(trackResponse.trackName, trackResponse.mid);
                 });
-
                 if (midByTrack.size > 0 && data.sessionDescription) {
                     await pc.setRemoteDescription(data.sessionDescription);
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     await cloudflare({ action: 'renegotiate', sessionId, sdp: pc.localDescription });
                 }
-            });
+            }, localGeneration);
 
             if (midByTrack.size > 0) {
                 await Promise.all([...midByTrack.values()].map((mid) => waitForTrackDelivery(mid, TRACK_DELIVERY_TIMEOUT_MS)));
                 await waitForIceConnected(pc, ICE_CONNECT_TIMEOUT_MS);
             }
-
-            const undelivered = names.filter((name) => {
+            const retryNames = [...new Set([...failedNames, ...names.filter((name) => {
                 const mid = midByTrack.get(name);
-                return mid ? !deliveredMidsRef.current.has(mid) : false;
-            });
-            const retryNames = [...new Set([...failedNames, ...undelivered])];
+                return !mid || !deliveredMidsRef.current.has(mid);
+            })])];
             retryNames.forEach((name) => pulledTracksRef.current.delete(`${remoteSessionId}:${name}`));
-
             if (retryNames.length) {
-                const attempts = retryNames.map((name) => pullAttemptsRef.current.get(`${remoteSessionId}:${name}`) || 0);
-                const maxAttempt = Math.max(...attempts);
-                if (maxAttempt < PULL_MAX_ATTEMPTS) {
-                    retryNames.forEach((name) => pullAttemptsRef.current.set(`${remoteSessionId}:${name}`, maxAttempt + 1));
-                    if (maxAttempt === 0) log('pulling', remoteUserId.slice(0, 8), names);
-                    if (maxAttempt > 0) log('retrying (attempt', `${maxAttempt + 1}/${PULL_MAX_ATTEMPTS})`, retryNames.map((n) => n.split('-').slice(-1)[0]));
-                    scheduleTimer(() => { if (pcRef.current) void pullRemoteTracksRef.current?.(remoteSessionId, remoteUserId, retryNames); }, PULL_RETRY_DELAY_MS * (maxAttempt + 1));
-                } else {
-                    console.warn('[calls] giving up on tracks after', PULL_MAX_ATTEMPTS, 'attempts:', remoteUserId.slice(0, 8), retryNames.map((n) => n.split('-').slice(-1)[0]));
-                    pushLog('تعذّر سحب بعض المسارات — سيُعاد تلقائياً');
-                }
+                const attempt = Math.max(...retryNames.map((name) => pullAttemptsRef.current.get(`${remoteSessionId}:${name}`) || 0));
+                retryNames.forEach((name) => pullAttemptsRef.current.set(`${remoteSessionId}:${name}`, attempt + 1));
+                const delay = Math.min(15_000, PULL_RETRY_DELAY_MS * 2 ** Math.min(attempt, PULL_MAX_ATTEMPTS)) + Math.floor(Math.random() * 350);
+                if (attempt === PULL_MAX_ATTEMPTS) pushLog('تعذّر مسار مؤقتاً — تستمر الاستعادة تلقائياً');
+                scheduleTimer(() => reconcileRemoteTracksRef.current?.(), delay);
             }
         } catch (error) {
-            names.forEach((name) => pulledTracksRef.current.delete(`${remoteSessionId}:${name}`));
+            names.forEach((name) => {
+                const key = `${remoteSessionId}:${name}`;
+                pulledTracksRef.current.delete(key);
+                pullAttemptsRef.current.set(key, (pullAttemptsRef.current.get(key) || 0) + 1);
+            });
             const failure = error as Error & { code?: string };
             if (failure.code === 'session_error') {
-                console.warn('[calls] session expired (410), refreshing');
                 pushLog('انتهت الجلسة — إعادة إنشائها');
                 void refreshSessionRef.current?.('session-error');
             } else {
-                console.warn('[calls] pull failed (will retry on next presence sync):', failure.code || failure.message);
+                console.warn('[calls] pull failed, reconciliation will retry:', failure.code || failure.message);
+                scheduleTimer(() => reconcileRemoteTracksRef.current?.(), PULL_RETRY_DELAY_MS + Math.floor(Math.random() * 350));
             }
         }
-    }, [cloudflare, initSession, log, pushLog, renegotiate, scheduleTimer, waitForIceConnected, waitForTrackDelivery]);
+    }, [cloudflare, initSession, pushLog, renegotiate, scheduleTimer, waitForIceConnected, waitForTrackDelivery]);
 
-    useEffect(() => {
-        pullRemoteTracksRef.current = pullRemoteTracks;
-    });
+    useEffect(() => { pullRemoteTracksRef.current = pullRemoteTracks; });
+
+    const reconcileRemoteTracks = useCallback(() => {
+        if (cleanedRef.current || !navigator.onLine) return;
+        desiredRemoteTracksRef.current.forEach((descriptor) => {
+            if (!pulledTracksRef.current.has(descriptor.key)) void pullRemoteTracksRef.current?.(descriptor.sessionId, descriptor.userId, [descriptor.trackName], descriptor.generation);
+        });
+    }, []);
+
+    useEffect(() => { reconcileRemoteTracksRef.current = reconcileRemoteTracks; }, [reconcileRemoteTracks]);
 
     const applyPresence = useCallback((channel: ReturnType<typeof supabase.channel>) => {
         const state = channel.presenceState() as Record<string, PresencePayload[]>;
         const onlineMap = new Map<string, PresencePayload>();
-        Object.entries(state).forEach(([key, values]) => { const value = values?.[values.length - 1]; if (value) onlineMap.set(value.user_id || key, value); });
+        Object.entries(state).forEach(([key, values]) => {
+            const value = [...(values || [])].sort((a, b) => ((b.session_generation || 0) - (a.session_generation || 0)) || ((b.updated_at || 0) - (a.updated_at || 0)))[0];
+            if (!value) return;
+            const presenceUserId = value.user_id || key;
+            const current = onlineMap.get(presenceUserId);
+            if (!current || (value.session_generation || 0) > (current.session_generation || 0) || ((value.session_generation || 0) === (current.session_generation || 0) && (value.updated_at || 0) > (current.updated_at || 0))) {
+                onlineMap.set(presenceUserId, value);
+            }
+        });
+
+        const nextDesired = new Map<string, DesiredRemoteTrack>();
+        onlineMap.forEach((presence, presenceUserId) => {
+            const sessionReady = presence.session_ready ?? Boolean(presence.cf_session_id);
+            if (presenceUserId === userId || !sessionReady || !presence.cf_session_id) return;
+            [presence.audio_track_id, presence.video_track_id].filter((name): name is string => !!name).forEach((trackName) => {
+                const key = `${presence.cf_session_id}:${trackName}`;
+                nextDesired.set(key, { key, userId: presenceUserId, sessionId: presence.cf_session_id!, generation: presence.session_generation || 0, trackName });
+            });
+        });
+        const usersWithReplacedSessions = new Set<string>();
+        desiredRemoteTracksRef.current.forEach((descriptor, key) => {
+            if (!nextDesired.has(key)) {
+                pulledTracksRef.current.delete(key);
+                pullAttemptsRef.current.delete(key);
+                const replacement = [...nextDesired.values()].find((next) => next.userId === descriptor.userId);
+                if (!replacement || replacement.sessionId !== descriptor.sessionId) usersWithReplacedSessions.add(descriptor.userId);
+            }
+        });
+        if (usersWithReplacedSessions.size) {
+            setRemoteStreams((current) => current.filter((stream) => !usersWithReplacedSessions.has(stream.userId)));
+        }
+        desiredRemoteTracksRef.current = nextDesired;
 
         setParticipants((current) => {
             const updated = [...current];
-            const currentIds = new Set(current.map((p) => p.userId));
-
+            const currentIds = new Set(current.map((participant) => participant.userId));
             onlineMap.forEach((presence, presenceUserId) => {
-                if (!currentIds.has(presenceUserId)) {
-                    updated.push({
-                        userId: presenceUserId,
-                        fullName: presence.full_name || 'طالب مسار',
-                        micEnabled: presence.mic_enabled || false,
-                        cameraEnabled: presence.camera_enabled || false,
-                        isOnline: true,
-                        cfSessionId: presence.cf_session_id || undefined,
-                        audioTrackId: presence.audio_track_id || undefined,
-                        videoTrackId: presence.video_track_id || undefined,
-                    });
-                }
+                if (!currentIds.has(presenceUserId)) updated.push({ userId: presenceUserId, fullName: presence.full_name || 'طالب مسار', micEnabled: presence.mic_enabled || false, cameraEnabled: presence.camera_enabled || false, isOnline: true, cfSessionId: presence.cf_session_id || undefined, audioTrackId: presence.audio_track_id || undefined, videoTrackId: presence.video_track_id || undefined, sessionGeneration: presence.session_generation || 0 });
             });
-
             return updated.map((participant) => {
                 const presence = onlineMap.get(participant.userId);
                 if (!presence) return { ...participant, isOnline: false };
-
-                if (participant.userId !== userId && presence.cf_session_id) {
-                    const names = [presence.audio_track_id, presence.video_track_id].filter((name): name is string => !!name);
-                    if (names.length) void pullRemoteTracksRef.current?.(presence.cf_session_id, participant.userId, names);
-                }
-
-                return {
-                    ...participant,
-                    fullName: presence.full_name || participant.fullName,
-                    isOnline: true,
-                    micEnabled: participant.userId === userId ? micEnabledRef.current : presence.mic_enabled,
-                    cameraEnabled: participant.userId === userId ? cameraEnabledRef.current : presence.camera_enabled,
-                    cfSessionId: presence.cf_session_id || undefined,
-                    audioTrackId: presence.audio_track_id || undefined,
-                    videoTrackId: presence.video_track_id || undefined,
-                };
+                return { ...participant, fullName: presence.full_name || participant.fullName, isOnline: true, micEnabled: participant.userId === userId ? micEnabledRef.current : presence.mic_enabled, cameraEnabled: participant.userId === userId ? cameraEnabledRef.current : presence.camera_enabled, cfSessionId: presence.cf_session_id || undefined, audioTrackId: presence.audio_track_id || undefined, videoTrackId: presence.video_track_id || undefined, sessionGeneration: presence.session_generation || 0 };
             });
         });
-    }, [userId]);
+        reconcileRemoteTracks();
+    }, [reconcileRemoteTracks, userId]);
 
     useEffect(() => {
         applyPresenceRef.current = applyPresence;
@@ -510,29 +587,42 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         if (cleanedRef.current) return null;
         refreshingRef.current = true;
         log('refreshing session:', reason || 'unknown');
-
-        pcRef.current?.close();
-        pcRef.current = null;
-        sessionIdRef.current = null;
-        setCfSessionId(null);
-        pulledTracksRef.current.clear();
-        pullAttemptsRef.current.clear();
-        trackToUserRef.current.clear();
-        deliveredMidsRef.current.clear();
-        setDebugInfo((current) => ({ ...current, status: 'connecting', sessionId: null, pulledTracks: 0, published: { audio: false, video: false } }));
-
-        const sessionId = await initSession();
         const liveTracks = [...publishedTracksRef.current.entries()].filter(([, track]) => track.readyState === 'live');
-        publishedTracksRef.current.clear();
-        for (const [kind, track] of liveTracks) {
-            await publishTrackRef.current?.(track, kind);
-        }
+        try {
+            presenceReadyRef.current = false;
+            audioTrackIdRef.current = null;
+            videoTrackIdRef.current = null;
+            await trackPresence();
+            pcRef.current?.close();
+            pcRef.current = null;
+            sessionIdRef.current = null;
+            setCfSessionId(null);
+            pulledTracksRef.current.clear();
+            pullAttemptsRef.current.clear();
+            trackToUserRef.current.clear();
+            deliveredMidsRef.current.clear();
+            setRemoteStreams([]);
+            publishedTracksRef.current.clear();
+            setDebugInfo((current) => ({ ...current, status: 'connecting', sessionId: null, pulledTracks: 0, published: { audio: false, video: false } }));
 
-        const channel = channelRef.current;
-        if (channel && pcRef.current) applyPresenceRef.current?.(channel);
-        refreshingRef.current = false;
-        return sessionId;
-    }, [initSession, log]);
+            const sessionId = await initSession();
+            if (!sessionId) return null;
+            for (const [kind, track] of liveTracks) await publishTrackRef.current?.(track, kind);
+            presenceReadyRef.current = true;
+            await trackPresence();
+            const channel = channelRef.current;
+            if (channel && pcRef.current) applyPresenceRef.current?.(channel);
+            reconcileRemoteTracksRef.current?.();
+            return sessionId;
+        } catch (error) {
+            console.error('[calls] session refresh failed:', error);
+            pushLog('تعذّرت استعادة الجلسة — ستتم المحاولة مجدداً');
+            scheduleTimer(() => void refreshSessionRef.current?.('refresh-retry'), 3_000);
+            return null;
+        } finally {
+            refreshingRef.current = false;
+        }
+    }, [initSession, log, pushLog, scheduleTimer, trackPresence]);
 
     useEffect(() => {
         refreshSessionRef.current = refreshSession;
@@ -546,6 +636,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             case 'NotFoundError': return `لم يتم العثور على ${device} متصل بهذا الجهاز. تأكد من توصيله ثم حاول مجدداً.`;
             case 'NotReadableError': return `${device} مشغولة من تطبيق أو نافذة أخرى حالياً. أغلقها ثم حاول مجدداً.`;
             case 'OverconstrainedError': return `${device} غير متوافقة مع الإعدادات المطلوبة. جرّب جهازاً آخر.`;
+            case 'AbortError': return `استغرق تشغيل ${device} وقتاً طويلاً. أغلق التطبيقات الأخرى التي تستخدمه ثم حاول مجدداً.`;
             default: return `تعذر الوصول إلى ${device}. تأكد من الصلاحيات ثم حاول مجدداً.`;
         }
     }, []);
@@ -573,7 +664,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             const stream = localStreamRef.current || new MediaStream();
             const oldTrack = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
             if (oldTrack && oldTrack !== track) {
-                void closeLocalTrack(kind);
+                await closeLocalTrack(kind);
                 stream.removeTrack(oldTrack);
                 oldTrack.stop();
                 publishedTracksRef.current.delete(kind);
@@ -593,6 +684,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             }
 
             track.addEventListener('ended', () => {
+                void closeLocalTrack(kind);
                 publishedTracksRef.current.delete(kind);
                 if (kind === 'audio') {
                     audioTrackIdRef.current = null;
@@ -620,7 +712,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 void trackPresence();
                 pushLog(`${kind === 'audio' ? 'الميكروفون' : 'الكاميرا'}: تعذّر البث، ستُعاد المحاولة تلقائياً`);
             }
-            setDebugInfo((current) => ({ ...current, published: { ...current.published, [kind]: Boolean(audioTrackIdRef.current || videoTrackIdRef.current) } }));
+            setDebugInfo((current) => ({ ...current, published: { ...current.published, [kind]: Boolean(kind === 'audio' ? audioTrackIdRef.current : videoTrackIdRef.current) } }));
             void scheduleTimer(() => void trackPresence(), 0);
         } catch (error) {
             console.error('[calls] media permission failed:', error);
@@ -644,10 +736,8 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         track.enabled = !track.enabled;
         micEnabledRef.current = track.enabled;
         setMicEnabled(track.enabled);
-        if (!track.enabled) {
-            audioTrackIdRef.current = null;
-            setDebugInfo((current) => ({ ...current, published: { ...current.published, audio: false } }));
-        }
+        // Muting keeps the Cloudflare publication alive. Presence advertises availability
+        // separately from the enabled state, so unmuting never loses the track identity.
         void trackPresence();
     }, [enableMedia, trackPresence]);
 
@@ -661,10 +751,6 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         track.enabled = !track.enabled;
         cameraEnabledRef.current = track.enabled;
         setCameraEnabled(track.enabled);
-        if (!track.enabled) {
-            videoTrackIdRef.current = null;
-            setDebugInfo((current) => ({ ...current, published: { ...current.published, video: false } }));
-        }
         void trackPresence();
     }, [enableMedia, trackPresence]);
 
@@ -685,16 +771,20 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         publishedTracksRef.current.clear();
         publishInFlightRef.current.clear();
         pulledTracksRef.current.clear();
+        desiredRemoteTracksRef.current.clear();
         pullAttemptsRef.current.clear();
         trackToUserRef.current.clear();
         requestingMediaRef.current.clear();
         deliveredMidsRef.current.clear();
         micEnabledRef.current = false;
         cameraEnabledRef.current = false;
+        presenceReadyRef.current = false;
+        if (iceDisconnectedTimerRef.current !== null) window.clearTimeout(iceDisconnectedTimerRef.current);
+        iceDisconnectedTimerRef.current = null;
         setRemoteStreams([]);
         setMicEnabled(false);
         setCameraEnabled(false);
-        setDebugInfo((current) => ({ ...current, status: 'idle', sessionId: null, connectionState: 'new', iceConnectionState: 'new', published: { audio: false, video: false }, pulledTracks: 0, logs: [] }));
+        setDebugInfo((current) => ({ ...current, status: 'idle', sessionId: null, connectionState: 'new', iceConnectionState: 'new', published: { audio: false, video: false }, pulledTracks: 0, sessionGeneration: 0, inboundBytes: 0, outboundBytes: 0, candidateType: 'unknown', logs: [] }));
     }, [localVideoRef]);
 
     useEffect(() => {
@@ -706,7 +796,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         if (!roomId || !userId) return;
         let active = true;
         cleanedRef.current = false;
-        const channel = supabase.channel(`cf-room:${roomId}`, { config: { presence: { key: userId } } });
+        const channel = supabase.channel(`cf-room:${roomId}`, { config: { presence: { key: `${userId}:${clientInstanceIdRef.current}` } } });
         channelRef.current = channel;
         channel.on('presence', { event: 'sync' }, () => { if (active) applyPresenceRef.current?.(channel); })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, () => void loadParticipantsRef.current?.())
@@ -715,6 +805,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                     setDebugInfo((current) => ({ ...current, status: 'connecting' }));
                     await loadParticipantsRef.current?.();
                     await initSession();
+                    presenceReadyRef.current = true;
                     await trackPresence();
                     if (active && channelRef.current) applyPresenceRef.current?.(channel);
                 }
@@ -723,16 +814,71 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         const heartbeat = window.setInterval(() => {
             if (active) void trackPresence();
         }, PRESENCE_HEARTBEAT_MS);
-        timersRef.current.push(heartbeat);
+        const reconciliation = window.setInterval(() => {
+            if (active) reconcileRemoteTracksRef.current?.();
+        }, PULL_RECONCILE_INTERVAL_MS);
+        timersRef.current.push(heartbeat, reconciliation);
 
         return () => {
             active = false;
             window.clearInterval(heartbeat);
+            window.clearInterval(reconciliation);
             channelRef.current = null;
             void supabase.removeChannel(channel);
             cleanup();
         };
     }, [cleanup, initSession, roomId, trackPresence, userId]);
+
+    useEffect(() => {
+        if (!roomId || !userId) return;
+        const recover = () => {
+            if (document.visibilityState === 'visible' && navigator.onLine) {
+                applyPresenceRef.current?.(channelRef.current!);
+                reconcileRemoteTracksRef.current?.();
+            }
+        };
+        const handleOffline = () => pushLog('انقطع اتصال الشبكة — بانتظار عودته');
+        window.addEventListener('online', recover);
+        window.addEventListener('offline', handleOffline);
+        document.addEventListener('visibilitychange', recover);
+        return () => {
+            window.removeEventListener('online', recover);
+            window.removeEventListener('offline', handleOffline);
+            document.removeEventListener('visibilitychange', recover);
+        };
+    }, [pushLog, roomId, userId]);
+
+    useEffect(() => {
+        if (!roomId || !userId) return;
+        const statsTimer = window.setInterval(async () => {
+            const pc = pcRef.current;
+            if (!pc || pc.connectionState === 'closed') return;
+            try {
+                const reports = await pc.getStats();
+                let inbound = 0;
+                let outbound = 0;
+                let candidateType = 'unknown';
+                reports.forEach((report) => {
+                    if (report.type === 'inbound-rtp' && !report.isRemote) inbound += Number(report.bytesReceived || 0);
+                    if (report.type === 'outbound-rtp' && !report.isRemote) outbound += Number(report.bytesSent || 0);
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated) {
+                        const localCandidate = reports.get(report.localCandidateId);
+                        if (localCandidate?.candidateType) candidateType = localCandidate.candidateType;
+                    }
+                });
+                const previous = lastStatsRef.current;
+                const expectsInbound = desiredRemoteTracksRef.current.size > 0;
+                const stagnantChecks = expectsInbound && inbound <= previous.inbound ? previous.stagnantChecks + 1 : 0;
+                lastStatsRef.current = { inbound, outbound, stagnantChecks };
+                setDebugInfo((current) => ({ ...current, inboundBytes: inbound, outboundBytes: outbound, candidateType }));
+                // Byte counters are diagnostic only: a muted participant can legitimately
+                // produce no inbound bytes, so delivery and ICE state drive recovery.
+            } catch (error) {
+                console.warn('[calls] stats collection failed:', error);
+            }
+        }, STATS_INTERVAL_MS);
+        return () => window.clearInterval(statsTimer);
+    }, [pushLog, roomId, userId]);
 
     const loadParticipants = useCallback(async () => {
         const currentUserId = userIdRef.current;
