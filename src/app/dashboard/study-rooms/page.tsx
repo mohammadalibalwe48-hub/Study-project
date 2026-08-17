@@ -133,6 +133,17 @@ export default function StudyRoomsPage() {
   });
 
   const refreshRooms = useCallback(async () => {
+    const { data: roomIds, error: roomIdsError } = await supabase
+      .from('study_rooms')
+      .select('id')
+      .eq('is_public', true);
+    if (roomIdsError) throw roomIdsError;
+
+    await Promise.all((roomIds || []).map(async ({ id }) => {
+      const { error } = await supabase.rpc('cleanup_stale_study_room_participants', { p_room_id: id });
+      if (error) console.warn(`Study-room stale participant cleanup failed for ${id}:`, error);
+    }));
+
     const { data: roomData, error: roomError } = await supabase
       .from('study_rooms')
       .select('id,title,description,mode,capacity,subject_id,creator_id,created_at,study_room_members(user_id)')
@@ -200,19 +211,15 @@ export default function StudyRoomsPage() {
     if (title.length < 3) { setError('اكتب عنواناً واضحاً للغرفة (3 أحرف على الأقل).'); return; }
     setCreating(true); setError('');
     try {
-      const { data: room, error: roomError } = await supabase.from('study_rooms').insert({
-        creator_id: user.id,
-        subject_id: form.subjectId ? Number(form.subjectId) : null,
-        title,
-        description: form.description.trim(),
-        mode: form.mode,
-        capacity: form.capacity,
-        is_public: true,
-      }).select('id,title,description,mode,capacity,subject_id,creator_id,created_at').single();
+      const { data: room, error: roomError } = await supabase.rpc('create_study_room', {
+        p_title: title,
+        p_description: form.description.trim(),
+        p_mode: form.mode,
+        p_capacity: form.capacity,
+        p_subject_id: form.subjectId ? Number(form.subjectId) : null,
+      });
       if (roomError) throw roomError;
-
-      const { error: memberError } = await supabase.from('study_room_members').insert({ room_id: room.id, user_id: user.id, role: 'host' });
-      if (memberError) console.error('Member insert error:', memberError);
+      if (!room) throw new Error('Room creation returned no room.');
 
       const selectedSubject = subjects.find((subject) => subject.id === room.subject_id);
       const createdRoom = {
@@ -374,7 +381,7 @@ function LocalVideoCard({ localVideoRef, cameraEnabled, profileName, localStream
   );
 }
 
-function RemoteVideo({ stream, name, participant }: { stream: MediaStream; name: string; participant?: RoomParticipant }) {
+function RemoteVideo({ stream, name, participant }: { stream?: MediaStream; name: string; participant: RoomParticipant }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [hasVideo, setHasVideo] = useState(false);
@@ -390,26 +397,25 @@ function RemoteVideo({ stream, name, participant }: { stream: MediaStream; name:
 
   useEffect(() => {
     const updateVideoState = () => {
-      const vTracks = stream.getVideoTracks().filter((t) => t.readyState === 'live' && t.enabled);
-      setHasVideo(vTracks.length > 0);
+      const videoTracks = stream?.getVideoTracks().filter((track) => track.readyState === 'live' && track.enabled) || [];
+      setHasVideo(videoTracks.length > 0 && participant.cameraEnabled);
     };
 
     updateVideoState();
-
-    if (videoRef.current) videoRef.current.srcObject = stream;
-    if (audioRef.current) audioRef.current.srcObject = stream;
-    void startPlayback();
+    if (videoRef.current) videoRef.current.srcObject = stream || null;
+    if (audioRef.current) audioRef.current.srcObject = stream || null;
+    if (stream) void startPlayback();
 
     const handleTrackChange = () => updateVideoState();
-    stream.addEventListener('addtrack', handleTrackChange);
-    stream.addEventListener('removetrack', handleTrackChange);
+    stream?.addEventListener('addtrack', handleTrackChange);
+    stream?.addEventListener('removetrack', handleTrackChange);
     return () => {
-      stream.removeEventListener('addtrack', handleTrackChange);
-      stream.removeEventListener('removetrack', handleTrackChange);
+      stream?.removeEventListener('addtrack', handleTrackChange);
+      stream?.removeEventListener('removetrack', handleTrackChange);
     };
-  }, [startPlayback, stream]);
+  }, [participant.cameraEnabled, startPlayback, stream]);
 
-  const micEnabled = participant?.micEnabled ?? stream.getAudioTracks().some((t) => t.enabled);
+  const micEnabled = participant.micEnabled;
 
   return (
     <div className="relative min-h-56 overflow-hidden rounded-2xl border-2 border-[#282825] bg-[#282825] shadow-[4px_4px_0_#d8bcff]">
@@ -438,7 +444,7 @@ function RemoteVideo({ stream, name, participant }: { stream: MediaStream; name:
           </div>
         </div>
       )}
-      {playbackBlocked && <button type="button" onClick={() => void startPlayback()} className="absolute left-3 top-3 z-10 rounded-full border-2 border-[#282825] bg-[#ffd64d] px-3 py-2 text-xs font-black text-[#282825] shadow-[2px_2px_0_#282825]">اضغط لتشغيل صوت المكالمة</button>}
+      {stream && playbackBlocked && <button type="button" onClick={() => void startPlayback()} className="absolute left-3 top-3 z-10 rounded-full border-2 border-[#282825] bg-[#ffd64d] px-3 py-2 text-xs font-black text-[#282825] shadow-[2px_2px_0_#282825]">اضغط لتشغيل صوت المكالمة</button>}
       <span className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-[#282825]/85 px-3 py-1 text-xs font-black text-white">
         {micEnabled ? <Mic className="h-3 w-3 text-[#5fae44]" /> : <MicOff className="h-3 w-3 text-[#ff5636]" />}
         {name}
@@ -462,5 +468,5 @@ function ActiveRoom({ room, userId, profileName, members, remoteStreams, localSt
     {mediaError && <div role="alert" className="rounded-2xl border-2 border-[#ff5636] bg-[#fff0ed] p-4 text-sm font-bold text-[#9f2413]">{mediaError}</div>}
     <div className="flex justify-end"><button onClick={() => setShowDebug((current) => !current)} className="app-chip border-2 border-[#282825] bg-[#fafaf7] px-3 py-1.5 text-[11px] font-black shadow-[1.5px_1.5px_0_#282825]">{showDebug ? 'إخفاء المعلومات التقنية' : 'معلومات تقنية'}</button></div>
     {showDebug && <div className="rounded-2xl border-2 border-[#282825] bg-[#282825] p-4 font-mono text-xs text-white/90 shadow-[3px_3px_0_#ffd64d]"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusColor}`} /><b className="text-[#ffd64d]">الحالة:</b> {debugInfo.status} · {debugInfo.connectionState} · {debugInfo.iceConnectionState} <b className="text-[#ffd64d]">الجلسة:</b> {debugInfo.sessionId ? debugInfo.sessionId.slice(0, 10) : '—'} · جيل {debugInfo.sessionGeneration} <b className="text-[#ffd64d]">البث:</b> {debugInfo.published.audio ? 'ميك ✓' : 'ميك ✗'} {debugInfo.published.video ? 'كام ✓' : 'كام ✗'} <b className="text-[#ffd64d]">مستلم:</b> {debugInfo.pulledTracks} <b className="text-[#ffd64d]">المسار:</b> {debugInfo.candidateType} <b className="text-[#ffd64d]">البيانات:</b> ↓{Math.round(debugInfo.inboundBytes / 1024)}KB ↑{Math.round(debugInfo.outboundBytes / 1024)}KB</div><ul className="mt-2 space-y-0.5">{debugInfo.logs.map((entry, index) => <li key={index} className="truncate text-[#bce9fa]">{entry}</li>)}</ul></div>}
-    <header className="flex flex-col gap-4 border-b-2 border-[#282825] pb-5 sm:flex-row sm:items-center sm:justify-between"><div><span className="app-chip border-2 border-[#282825] bg-[#bce9fa] font-black"><Radio className="h-4 w-4" /> متصل الآن</span><h2 className="mt-2 text-3xl font-black">{room.title}</h2><p className="mt-1 text-sm font-semibold text-[#5f5f59]">{members.length} من {room.capacity} مشاركين · {room.mode === 'both' ? 'صوت وفيديو' : room.mode === 'voice' ? 'صوت' : 'فيديو'}</p></div><button onClick={leaveRoom} className="app-button flex items-center justify-center gap-2 border-2 border-[#282825] bg-white px-5 py-3 text-sm font-black text-[#ff5636] shadow-[2px_2px_0_#282825]"><X className="h-4 w-4" /> مغادرة الغرفة</button></header><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]"><div className="space-y-6"><div className="grid gap-3 sm:grid-cols-2">{remoteStreams.map((remote) => { const member = members.find((m) => m.userId === remote.userId); return <RemoteVideo key={remote.userId} stream={remote.stream} name={member?.fullName || 'طالب مسار'} participant={member} />; })}<LocalVideoCard localVideoRef={localVideoRef} cameraEnabled={cameraEnabled} profileName={profileName} localStream={localStream} /><div className="rounded-2xl border-2 border-[#282825] bg-white p-4 shadow-[3px_3px_0_#282825]"><h3 className="font-black">المشاركون المتصلون</h3><div className="mt-4 space-y-2">{members.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-xl bg-[#fafaf7] p-3 text-sm font-bold"><UserRound className="h-4 w-4 text-[#ff5636]" />{member.userId === userId ? `${member.fullName} (أنت)` : member.fullName}<span className={`mr-auto h-2 w-2 rounded-full ${member.isOnline ? 'bg-[#5fae44]' : 'bg-[#999]'}`} /></div>)}</div></div></div><div className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-6 text-center shadow-[4px_4px_0_#282825]"><div className="flex flex-wrap justify-center gap-3"><button onClick={toggleMic} className={`app-button flex items-center gap-2 border-2 border-[#282825] px-4 py-3 text-xs font-black shadow-[2px_2px_0_#282825] ${micEnabled ? 'bg-white' : 'bg-[#ff5636] text-white'}`}>{micEnabled ? <Mic /> : <MicOff />} {micEnabled ? 'الميكروفون يعمل' : 'تشغيل الميكروفون'}</button><button onClick={toggleCamera} className={`app-button flex items-center gap-2 border-2 border-[#282825] px-4 py-3 text-xs font-black shadow-[2px_2px_0_#282825] ${cameraEnabled ? 'bg-white' : 'bg-[#ff5636] text-white'}`}>{cameraEnabled ? <Video /> : <VideoOff />} {cameraEnabled ? 'الكاميرا تعمل' : 'تشغيل الكاميرا'}</button></div>{mediaError && <p role="alert" className="mt-3 text-xs font-bold text-[#9f2413]">{mediaError}</p>}</div><div className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><div className="flex items-center justify-between"><h3 className="flex items-center gap-2 font-black"><Brain className="h-5 w-5 text-[#ff5636]" /> مؤقت التركيز</h3><div className="flex gap-2"><button onClick={() => selectTimer(1500)} className={`rounded-lg border-2 border-[#282825] px-2 py-1 text-[10px] font-black ${timerDuration === 1500 ? 'bg-[#282825] text-white' : 'bg-white'}`}>٢٥د</button><button onClick={() => selectTimer(3000)} className={`rounded-lg border-2 border-[#282825] px-2 py-1 text-[10px] font-black ${timerDuration === 3000 ? 'bg-[#282825] text-white' : 'bg-white'}`}>٥٠د</button></div></div><p className="my-4 text-center font-mono text-5xl font-black">{formatTime(timerSecondsLeft)}</p><div className="flex justify-center gap-2"><button onClick={() => setTimerActive(!timerActive)} className="app-button flex items-center gap-2 border-2 border-[#282825] bg-[#ff5636] px-4 py-2 text-xs font-black text-white shadow-[2px_2px_0_#282825]">{timerActive ? <Pause /> : <Play />} {timerActive ? 'إيقاف' : 'بدء'}</button><button onClick={() => { setTimerActive(false); selectTimer(timerDuration); }} className="app-button flex items-center gap-2 border-2 border-[#282825] bg-white px-4 py-2 text-xs font-black shadow-[2px_2px_0_#282825]"><RotateCcw /> إعادة</button></div></div><div className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><h3 className="font-black">أجواء التركيز</h3><div className="mt-3 grid grid-cols-3 gap-2">{([['rain', 'مطر', CloudRain], ['binaural', 'ألفا', Sparkles], ['hum', 'مقهى', Coffee]] as const).map(([mode, label, Icon]) => <button key={mode} onClick={() => toggleSound(mode)} className={`rounded-xl border-2 border-[#282825] p-2 text-xs font-black ${soundMode === mode ? 'bg-[#ffd64d]' : 'bg-white'}`}><Icon className="mx-auto h-4 w-4 text-[#ff5636]" />{label}</button>)}</div><label className="mt-3 block text-xs font-bold">مستوى الصوت<input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={(event) => { const volume = Number(event.target.value); setSoundVolume(volume); if (soundMode !== 'off') focusAudio.setVolume(volume); }} className="mt-2 w-full accent-[#ff5636]" /></label></div></div><div className="flex min-h-[620px] flex-col rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><h3 className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-3 font-black"><span>نقاش الغرفة</span><MessageSquare className="h-5 w-5 text-[#ff5636]" /></h3><div className="flex-1 space-y-3 overflow-y-auto py-4">{chatMessages.length === 0 && <p className="py-8 text-center text-sm font-semibold text-[#77776f]">ابدأوا النقاش برسالة قصيرة ومحترمة.</p>}{chatMessages.map((message) => <article key={message.id} className="rounded-xl border border-[#282825]/20 bg-[#fafaf7] p-3"><div className="flex items-center justify-between text-[10px] font-black"><span>{message.users?.[0]?.full_name || 'طالب مسار'}</span><time className="font-normal text-[#77776f]">{new Date(message.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</time></div><p className="mt-1 text-sm font-semibold leading-relaxed">{message.message}</p></article>)}<div ref={chatEndRef} /></div><form onSubmit={sendMessage} className="flex gap-2 border-t-2 border-[#282825]/10 pt-3"><label className="sr-only" htmlFor="room-message">رسالة الغرفة</label><input id="room-message" maxLength={1000} value={messageInput} onChange={(event) => setMessageInput(event.target.value)} placeholder="شارك فكرة أو سؤالاً…" className="min-w-0 flex-1 rounded-xl border-2 border-[#282825] p-3 text-sm font-semibold outline-none focus:border-[#ff5636]" /><button className="app-button border-2 border-[#282825] bg-[#ff5636] px-4 text-xs font-black text-white shadow-[2px_2px_0_#282825]">إرسال</button></form>{messageError && <p role="alert" className="mt-2 text-xs font-bold text-[#9f2413]">{messageError}</p>}</div></div></section>;
+    <header className="flex flex-col gap-4 border-b-2 border-[#282825] pb-5 sm:flex-row sm:items-center sm:justify-between"><div><span className="app-chip border-2 border-[#282825] bg-[#bce9fa] font-black"><Radio className="h-4 w-4" /> متصل الآن</span><h2 className="mt-2 text-3xl font-black">{room.title}</h2><p className="mt-1 text-sm font-semibold text-[#5f5f59]">{members.length} من {room.capacity} مشاركين · {room.mode === 'both' ? 'صوت وفيديو' : room.mode === 'voice' ? 'صوت' : 'فيديو'}</p></div><button onClick={leaveRoom} className="app-button flex items-center justify-center gap-2 border-2 border-[#282825] bg-white px-5 py-3 text-sm font-black text-[#ff5636] shadow-[2px_2px_0_#282825]"><X className="h-4 w-4" /> مغادرة الغرفة</button></header><div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]"><div className="space-y-6"><div className="grid gap-3 sm:grid-cols-2">{members.filter((member) => member.userId !== userId).map((member) => { const remote = remoteStreams.find((stream) => stream.userId === member.userId); return <RemoteVideo key={member.userId} stream={remote?.stream} name={member.fullName} participant={member} />; })}<LocalVideoCard localVideoRef={localVideoRef} cameraEnabled={cameraEnabled} profileName={profileName} localStream={localStream} /><div className="rounded-2xl border-2 border-[#282825] bg-white p-4 shadow-[3px_3px_0_#282825]"><h3 className="font-black">المشاركون المتصلون</h3><div className="mt-4 space-y-2">{members.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-xl bg-[#fafaf7] p-3 text-sm font-bold"><UserRound className="h-4 w-4 text-[#ff5636]" />{member.userId === userId ? `${member.fullName} (أنت)` : member.fullName}<span className="mr-auto h-2 w-2 rounded-full bg-[#5fae44]" /></div>)}</div></div></div><div className="rounded-2xl border-2 border-[#282825] bg-[#ffd64d] p-6 text-center shadow-[4px_4px_0_#282825]"><div className="flex flex-wrap justify-center gap-3"><button onClick={toggleMic} className={`app-button flex items-center gap-2 border-2 border-[#282825] px-4 py-3 text-xs font-black shadow-[2px_2px_0_#282825] ${micEnabled ? 'bg-white' : 'bg-[#ff5636] text-white'}`}>{micEnabled ? <Mic /> : <MicOff />} {micEnabled ? 'الميكروفون يعمل' : 'تشغيل الميكروفون'}</button><button onClick={toggleCamera} className={`app-button flex items-center gap-2 border-2 border-[#282825] px-4 py-3 text-xs font-black shadow-[2px_2px_0_#282825] ${cameraEnabled ? 'bg-white' : 'bg-[#ff5636] text-white'}`}>{cameraEnabled ? <Video /> : <VideoOff />} {cameraEnabled ? 'الكاميرا تعمل' : 'تشغيل الكاميرا'}</button></div>{mediaError && <p role="alert" className="mt-3 text-xs font-bold text-[#9f2413]">{mediaError}</p>}</div><div className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><div className="flex items-center justify-between"><h3 className="flex items-center gap-2 font-black"><Brain className="h-5 w-5 text-[#ff5636]" /> مؤقت التركيز</h3><div className="flex gap-2"><button onClick={() => selectTimer(1500)} className={`rounded-lg border-2 border-[#282825] px-2 py-1 text-[10px] font-black ${timerDuration === 1500 ? 'bg-[#282825] text-white' : 'bg-white'}`}>٢٥د</button><button onClick={() => selectTimer(3000)} className={`rounded-lg border-2 border-[#282825] px-2 py-1 text-[10px] font-black ${timerDuration === 3000 ? 'bg-[#282825] text-white' : 'bg-white'}`}>٥٠د</button></div></div><p className="my-4 text-center font-mono text-5xl font-black">{formatTime(timerSecondsLeft)}</p><div className="flex justify-center gap-2"><button onClick={() => setTimerActive(!timerActive)} className="app-button flex items-center gap-2 border-2 border-[#282825] bg-[#ff5636] px-4 py-2 text-xs font-black text-white shadow-[2px_2px_0_#282825]">{timerActive ? <Pause /> : <Play />} {timerActive ? 'إيقاف' : 'بدء'}</button><button onClick={() => { setTimerActive(false); selectTimer(timerDuration); }} className="app-button flex items-center gap-2 border-2 border-[#282825] bg-white px-4 py-2 text-xs font-black shadow-[2px_2px_0_#282825]"><RotateCcw /> إعادة</button></div></div><div className="rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><h3 className="font-black">أجواء التركيز</h3><div className="mt-3 grid grid-cols-3 gap-2">{([['rain', 'مطر', CloudRain], ['binaural', 'ألفا', Sparkles], ['hum', 'مقهى', Coffee]] as const).map(([mode, label, Icon]) => <button key={mode} onClick={() => toggleSound(mode)} className={`rounded-xl border-2 border-[#282825] p-2 text-xs font-black ${soundMode === mode ? 'bg-[#ffd64d]' : 'bg-white'}`}><Icon className="mx-auto h-4 w-4 text-[#ff5636]" />{label}</button>)}</div><label className="mt-3 block text-xs font-bold">مستوى الصوت<input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={(event) => { const volume = Number(event.target.value); setSoundVolume(volume); if (soundMode !== 'off') focusAudio.setVolume(volume); }} className="mt-2 w-full accent-[#ff5636]" /></label></div></div><div className="flex min-h-[620px] flex-col rounded-2xl border-2 border-[#282825] bg-white p-5 shadow-[4px_4px_0_#282825]"><h3 className="flex items-center justify-between border-b-2 border-[#282825]/10 pb-3 font-black"><span>نقاش الغرفة</span><MessageSquare className="h-5 w-5 text-[#ff5636]" /></h3><div className="flex-1 space-y-3 overflow-y-auto py-4">{chatMessages.length === 0 && <p className="py-8 text-center text-sm font-semibold text-[#77776f]">ابدأوا النقاش برسالة قصيرة ومحترمة.</p>}{chatMessages.map((message) => <article key={message.id} className="rounded-xl border border-[#282825]/20 bg-[#fafaf7] p-3"><div className="flex items-center justify-between text-[10px] font-black"><span>{message.users?.[0]?.full_name || 'طالب مسار'}</span><time className="font-normal text-[#77776f]">{new Date(message.created_at).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</time></div><p className="mt-1 text-sm font-semibold leading-relaxed">{message.message}</p></article>)}<div ref={chatEndRef} /></div><form onSubmit={sendMessage} className="flex gap-2 border-t-2 border-[#282825]/10 pt-3"><label className="sr-only" htmlFor="room-message">رسالة الغرفة</label><input id="room-message" maxLength={1000} value={messageInput} onChange={(event) => setMessageInput(event.target.value)} placeholder="شارك فكرة أو سؤالاً…" className="min-w-0 flex-1 rounded-xl border-2 border-[#282825] p-3 text-sm font-semibold outline-none focus:border-[#ff5636]" /><button className="app-button border-2 border-[#282825] bg-[#ff5636] px-4 text-xs font-black text-white shadow-[2px_2px_0_#282825]">إرسال</button></form>{messageError && <p role="alert" className="mt-2 text-xs font-bold text-[#9f2413]">{messageError}</p>}</div></div></section>;
 }

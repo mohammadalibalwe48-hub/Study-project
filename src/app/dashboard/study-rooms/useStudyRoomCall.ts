@@ -73,6 +73,19 @@ type DesiredRemoteTrack = {
     trackName: string;
 };
 
+type CallStateRow = {
+    user_id: string;
+    client_instance_id: string | null;
+    cf_session_id: string | null;
+    session_generation: number;
+    session_ready: boolean;
+    audio_track_id: string | null;
+    video_track_id: string | null;
+    mic_enabled: boolean;
+    camera_enabled: boolean;
+    last_seen: string;
+};
+
 const ICE_CONNECT_TIMEOUT_MS = 10_000;
 const ICE_DISCONNECTED_GRACE_MS = 8_000;
 const TRACK_DELIVERY_TIMEOUT_MS = 7_000;
@@ -82,6 +95,7 @@ const PULL_RECONCILE_INTERVAL_MS = 5_000;
 const PARTICIPANT_RECONCILE_INTERVAL_MS = 5_000;
 const PRESENCE_HEARTBEAT_MS = 10_000;
 const STATS_INTERVAL_MS = 5_000;
+const CALL_STATE_TTL_MS = 30_000;
 
 export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مسار', localVideoRef }: UseStudyRoomCallOptions) {
     const [participants, setParticipants] = useState<RoomParticipant[]>([]);
@@ -106,6 +120,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     });
 
     const localStreamRef = useRef<MediaStream | null>(null);
+    const participantsRef = useRef<RoomParticipant[]>([]);
     const profileNameRef = useRef(profileName);
     const userIdRef = useRef(userId);
     const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -138,7 +153,8 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     const reconcileRemoteTracksRef = useRef<(() => void) | null>(null);
     const refreshSessionRef = useRef<((reason?: string) => Promise<string | null>) | null>(null);
     const publishTrackRef = useRef<(track: MediaStreamTrack, kind: TrackKind) => Promise<void>>(null);
-    const applyPresenceRef = useRef<((channel: ReturnType<typeof supabase.channel>) => void) | null>(null);
+    const applyPresenceRef = useRef<(() => void) | null>(null);
+    const refreshCallStatesRef = useRef<(() => Promise<void>) | null>(null);
 
     const pushLog = useCallback((message: string) => {
         setDebugInfo((current) => {
@@ -162,25 +178,40 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
     const trackPresence = useCallback(async () => {
         const currentUserId = userIdRef.current;
-        if (!channelRef.current || !currentUserId) return;
-        try {
-            await channelRef.current.track({
-                user_id: currentUserId,
-                full_name: profileNameRef.current,
-                client_instance_id: clientInstanceIdRef.current,
-                session_generation: sessionGenerationRef.current,
-                session_ready: presenceReadyRef.current,
-                updated_at: Date.now(),
-                cf_session_id: sessionIdRef.current,
-                audio_track_id: audioTrackIdRef.current,
-                video_track_id: videoTrackIdRef.current,
-                mic_enabled: micEnabledRef.current,
-                camera_enabled: cameraEnabledRef.current,
-            } satisfies PresencePayload);
-        } catch (error) {
-            console.warn('[calls] presence broadcast failed:', error);
-        }
-    }, []);
+        if (!roomId || !currentUserId || cleanedRef.current) return;
+        const state = {
+            user_id: currentUserId,
+            client_instance_id: clientInstanceIdRef.current,
+            session_generation: sessionGenerationRef.current,
+            session_ready: presenceReadyRef.current,
+            cf_session_id: sessionIdRef.current,
+            audio_track_id: audioTrackIdRef.current,
+            video_track_id: videoTrackIdRef.current,
+            mic_enabled: micEnabledRef.current,
+            camera_enabled: cameraEnabledRef.current,
+        };
+
+        const [{ error: stateError }, presenceResult] = await Promise.all([
+            supabase.from('study_room_participant_states').upsert({
+                room_id: roomId,
+                ...state,
+                last_seen: new Date().toISOString(),
+            }, { onConflict: 'room_id,user_id,client_instance_id' }),
+            channelRef.current
+                ? channelRef.current.track({
+                    ...state,
+                    full_name: profileNameRef.current,
+                    updated_at: Date.now(),
+                } satisfies PresencePayload).then(
+                    () => null,
+                    (error: unknown) => error,
+                )
+                : Promise.resolve(null),
+        ]);
+
+        if (stateError) console.warn('[calls] durable participant state update failed:', stateError);
+        if (presenceResult) console.warn('[calls] realtime presence update failed:', presenceResult);
+    }, [roomId]);
 
     const cloudflare = useCallback(async (body: Record<string, unknown>): Promise<CloudflareResponse> => {
         let response: Response;
@@ -528,56 +559,86 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
 
     useEffect(() => { reconcileRemoteTracksRef.current = reconcileRemoteTracks; }, [reconcileRemoteTracks]);
 
-    const applyPresence = useCallback((channel: ReturnType<typeof supabase.channel>) => {
-        const state = channel.presenceState() as Record<string, PresencePayload[]>;
-        const onlineMap = new Map<string, PresencePayload>();
-        Object.entries(state).forEach(([key, values]) => {
-            const value = [...(values || [])].sort((a, b) => ((b.session_generation || 0) - (a.session_generation || 0)) || ((b.updated_at || 0) - (a.updated_at || 0)))[0];
-            if (!value) return;
-            const presenceUserId = value.user_id || key;
-            const current = onlineMap.get(presenceUserId);
-            if (!current || (value.session_generation || 0) > (current.session_generation || 0) || ((value.session_generation || 0) === (current.session_generation || 0) && (value.updated_at || 0) > (current.updated_at || 0))) {
-                onlineMap.set(presenceUserId, value);
-            }
+    const applyPresence = useCallback(() => {
+        // Presence only wakes reconciliation. Durable leases decide who is visible.
+        void refreshCallStatesRef.current?.();
+    }, []);
+
+    const refreshCallStates = useCallback(async () => {
+        if (!roomId || !userIdRef.current) return;
+        const cutoff = new Date(Date.now() - CALL_STATE_TTL_MS).toISOString();
+        const { error: cleanupError } = await supabase.rpc('cleanup_stale_study_room_participants', { p_room_id: roomId });
+        if (cleanupError) console.warn('[calls] stale participant cleanup failed:', cleanupError);
+
+        const [{ data, error }, { data: memberData, error: memberError }] = await Promise.all([
+            supabase
+                .from('study_room_participant_states')
+                .select('user_id,client_instance_id,cf_session_id,session_generation,session_ready,audio_track_id,video_track_id,mic_enabled,camera_enabled,last_seen')
+                .eq('room_id', roomId)
+                .gte('last_seen', cutoff)
+                .order('last_seen', { ascending: false }),
+            supabase.from('study_room_members').select('user_id,users(full_name)').eq('room_id', roomId),
+        ]);
+        if (error) {
+            console.error('[calls] call state load failed:', error);
+            return;
+        }
+        if (memberError) console.warn('[calls] participant names load failed:', memberError);
+
+        type MemberRow = { user_id: string; users: { full_name: string | null } | { full_name: string | null }[] | null };
+        const names = new Map<string, string>();
+        ((memberData || []) as MemberRow[]).forEach((member) => {
+            const relatedUser = Array.isArray(member.users) ? member.users[0] : member.users;
+            if (relatedUser?.full_name) names.set(member.user_id, relatedUser.full_name);
         });
 
+        const rows = (data || []) as CallStateRow[];
+        const activeByUser = new Map<string, CallStateRow>();
+        rows.forEach((row) => {
+            if (!activeByUser.has(row.user_id)) activeByUser.set(row.user_id, row);
+        });
         const nextDesired = new Map<string, DesiredRemoteTrack>();
-        onlineMap.forEach((presence, presenceUserId) => {
-            const sessionReady = presence.session_ready ?? Boolean(presence.cf_session_id);
-            if (presenceUserId === userId || !sessionReady || !presence.cf_session_id) return;
-            [presence.audio_track_id, presence.video_track_id].filter((name): name is string => !!name).forEach((trackName) => {
-                const key = `${presence.cf_session_id}:${trackName}`;
-                nextDesired.set(key, { key, userId: presenceUserId, sessionId: presence.cf_session_id!, generation: presence.session_generation || 0, trackName });
+        activeByUser.forEach((row) => {
+            if (row.user_id === userIdRef.current || !row.session_ready || !row.cf_session_id) return;
+            [row.audio_track_id, row.video_track_id].filter((name): name is string => Boolean(name)).forEach((trackName) => {
+                const key = `${row.cf_session_id}:${trackName}`;
+                nextDesired.set(key, { key, userId: row.user_id, sessionId: row.cf_session_id!, generation: row.session_generation, trackName });
             });
         });
-        const usersWithReplacedSessions = new Set<string>();
+
+        const replacedUsers = new Set<string>();
         desiredRemoteTracksRef.current.forEach((descriptor, key) => {
-            if (!nextDesired.has(key)) {
-                pulledTracksRef.current.delete(key);
-                pullAttemptsRef.current.delete(key);
-                const replacement = [...nextDesired.values()].find((next) => next.userId === descriptor.userId);
-                if (!replacement || replacement.sessionId !== descriptor.sessionId) usersWithReplacedSessions.add(descriptor.userId);
-            }
+            if (nextDesired.has(key)) return;
+            pulledTracksRef.current.delete(key);
+            pullAttemptsRef.current.delete(key);
+            replacedUsers.add(descriptor.userId);
         });
-        if (usersWithReplacedSessions.size) {
-            setRemoteStreams((current) => current.filter((stream) => !usersWithReplacedSessions.has(stream.userId)));
-        }
+        if (replacedUsers.size) setRemoteStreams((current) => current.filter((stream) => !replacedUsers.has(stream.userId)));
         desiredRemoteTracksRef.current = nextDesired;
 
-        setParticipants((current) => {
-            const updated = [...current];
-            const currentIds = new Set(current.map((participant) => participant.userId));
-            onlineMap.forEach((presence, presenceUserId) => {
-                if (!currentIds.has(presenceUserId)) updated.push({ userId: presenceUserId, fullName: presence.full_name || 'طالب مسار', micEnabled: presence.mic_enabled || false, cameraEnabled: presence.camera_enabled || false, isOnline: true, cfSessionId: presence.cf_session_id || undefined, audioTrackId: presence.audio_track_id || undefined, videoTrackId: presence.video_track_id || undefined, sessionGeneration: presence.session_generation || 0 });
-            });
-            return updated.map((participant) => {
-                const presence = onlineMap.get(participant.userId);
-                if (!presence) return { ...participant, isOnline: false };
-                return { ...participant, fullName: presence.full_name || participant.fullName, isOnline: true, micEnabled: participant.userId === userId ? micEnabledRef.current : presence.mic_enabled, cameraEnabled: participant.userId === userId ? cameraEnabledRef.current : presence.camera_enabled, cfSessionId: presence.cf_session_id || undefined, audioTrackId: presence.audio_track_id || undefined, videoTrackId: presence.video_track_id || undefined, sessionGeneration: presence.session_generation || 0 };
-            });
-        });
+        setParticipants([...activeByUser.values()].flatMap((row) => {
+            const name = names.get(row.user_id) || (row.user_id === userIdRef.current ? profileNameRef.current : '');
+            if (!name) return [];
+            const previous = participantsRef.current.find((participant) => participant.userId === row.user_id);
+            return [{
+                ...previous,
+                userId: row.user_id,
+                fullName: name,
+                isOnline: true,
+                micEnabled: row.user_id === userIdRef.current ? micEnabledRef.current : row.mic_enabled,
+                cameraEnabled: row.user_id === userIdRef.current ? cameraEnabledRef.current : row.camera_enabled,
+                cfSessionId: row.cf_session_id || undefined,
+                audioTrackId: row.audio_track_id || undefined,
+                videoTrackId: row.video_track_id || undefined,
+                sessionGeneration: row.session_generation,
+            }];
+        }));
         reconcileRemoteTracks();
-    }, [reconcileRemoteTracks, userId]);
+    }, [reconcileRemoteTracks, roomId]);
+
+    useEffect(() => {
+        refreshCallStatesRef.current = refreshCallStates;
+    }, [refreshCallStates]);
 
     useEffect(() => {
         applyPresenceRef.current = applyPresence;
@@ -611,8 +672,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
             for (const [kind, track] of liveTracks) await publishTrackRef.current?.(track, kind);
             presenceReadyRef.current = true;
             await trackPresence();
-            const channel = channelRef.current;
-            if (channel && pcRef.current) applyPresenceRef.current?.(channel);
+            if (channelRef.current && pcRef.current) applyPresenceRef.current?.();
             reconcileRemoteTracksRef.current?.();
             return sessionId;
         } catch (error) {
@@ -760,6 +820,15 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         timersRef.current.forEach((id) => window.clearTimeout(id));
         timersRef.current = [];
         if (channelRef.current) void channelRef.current.untrack();
+        const currentUserId = userIdRef.current;
+        if (roomId && currentUserId) {
+            void supabase
+                .from('study_room_participant_states')
+                .delete()
+                .eq('room_id', roomId)
+                .eq('user_id', currentUserId)
+                .eq('client_instance_id', clientInstanceIdRef.current);
+        }
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
         setLocalStream(null);
@@ -786,7 +855,7 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         setMicEnabled(false);
         setCameraEnabled(false);
         setDebugInfo((current) => ({ ...current, status: 'idle', sessionId: null, connectionState: 'new', iceConnectionState: 'new', published: { audio: false, video: false }, pulledTracks: 0, sessionGeneration: 0, inboundBytes: 0, outboundBytes: 0, candidateType: 'unknown', logs: [] }));
-    }, [localVideoRef]);
+    }, [localVideoRef, roomId]);
 
     useEffect(() => {
         profileNameRef.current = profileName;
@@ -805,12 +874,15 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         };
         channel.on('presence', { event: 'sync' }, () => {
             if (!active) return;
-            applyPresenceRef.current?.(channel);
+            applyPresenceRef.current?.();
             refreshParticipants();
         })
             .on('presence', { event: 'join' }, refreshParticipants)
             .on('presence', { event: 'leave' }, refreshParticipants)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_members', filter: `room_id=eq.${roomId}` }, refreshParticipants)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_participant_states', filter: `room_id=eq.${roomId}` }, () => {
+                if (active) void refreshCallStatesRef.current?.();
+            })
             .subscribe(async (status) => {
                 if (status !== 'SUBSCRIBED' || !active) return;
                 setDebugInfo((current) => ({ ...current, status: initialized ? current.status : 'connecting' }));
@@ -821,14 +893,18 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
                 }
                 presenceReadyRef.current = Boolean(sessionIdRef.current);
                 await trackPresence();
-                if (active && channelRef.current) applyPresenceRef.current?.(channel);
+                await refreshCallStatesRef.current?.();
+                if (active && channelRef.current) applyPresenceRef.current?.();
             });
 
         const heartbeat = window.setInterval(() => {
             if (active) void trackPresence();
         }, PRESENCE_HEARTBEAT_MS);
         const reconciliation = window.setInterval(() => {
-            if (active) reconcileRemoteTracksRef.current?.();
+            if (active) {
+                void refreshCallStatesRef.current?.();
+                reconcileRemoteTracksRef.current?.();
+            }
         }, PULL_RECONCILE_INTERVAL_MS);
         const participantReconciliation = window.setInterval(refreshParticipants, PARTICIPANT_RECONCILE_INTERVAL_MS);
         timersRef.current.push(heartbeat, reconciliation, participantReconciliation);
@@ -848,10 +924,10 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
         if (!roomId || !userId) return;
         const recover = () => {
             if (document.visibilityState === 'visible' && navigator.onLine) {
-                const channel = channelRef.current;
-                if (channel) applyPresenceRef.current?.(channel);
+                if (channelRef.current) applyPresenceRef.current?.();
                 void loadParticipantsRef.current?.();
                 void trackPresence();
+                void refreshCallStatesRef.current?.();
                 reconcileRemoteTracksRef.current?.();
             }
         };
@@ -899,22 +975,17 @@ export function useStudyRoomCall({ roomId, userId, profileName = 'طالب مس�
     }, [pushLog, roomId, userId]);
 
     const loadParticipants = useCallback(async () => {
-        const currentUserId = userIdRef.current;
-        if (!roomId || !currentUserId) return;
-        const { data, error } = await supabase.from('study_room_members').select('user_id,users(full_name)').eq('room_id', roomId);
-        if (error) { console.error('[calls] participants load failed:', error); return; }
-        type MemberRow = { user_id: string; users: { full_name: string | null } | { full_name: string | null }[] | null };
-        setParticipants((current) => (data as MemberRow[] || []).map((row) => {
-            const relatedUser = Array.isArray(row.users) ? row.users[0] : row.users;
-            const previous = current.find((item) => item.userId === row.user_id);
-            return { userId: row.user_id, fullName: relatedUser?.full_name || (row.user_id === currentUserId ? profileNameRef.current : 'طالب مسار'), micEnabled: previous?.micEnabled || false, cameraEnabled: previous?.cameraEnabled || false, isOnline: previous?.isOnline || row.user_id === currentUserId };
-        }));
-    }, [roomId]);
+        await refreshCallStatesRef.current?.();
+    }, []);
 
     const loadParticipantsRef = useRef<(() => Promise<void>) | null>(null);
     useEffect(() => {
         loadParticipantsRef.current = loadParticipants;
     });
+
+    useEffect(() => {
+        participantsRef.current = participants;
+    }, [participants]);
 
     useEffect(() => { micEnabledRef.current = micEnabled; cameraEnabledRef.current = cameraEnabled; void trackPresence(); }, [cameraEnabled, micEnabled, trackPresence]);
 
